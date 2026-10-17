@@ -10,6 +10,7 @@ import { ReporteProductoTopItemDto } from './dto/reporte-producto-top-item.dto.j
 import { ReporteStockBajoItemDto } from './dto/reporte-stock-bajo-item.dto.js';
 import { ReporteVentasDiarioItemDto } from './dto/reporte-ventas-diario-item.dto.js';
 import { ReporteVentasResponseDto } from './dto/reporte-ventas-response.dto.js';
+import { buildPorMetodoPago } from './utils/build-por-metodo-pago.js';
 
 @Injectable()
 export class ReporteService {
@@ -19,13 +20,21 @@ export class ReporteService {
     const ventasRows = await this.ventasBaseQb(filtro)
       .select('venta.id', 'id')
       .addSelect('venta.total', 'total')
+      .addSelect('venta.metodo_pago', 'metodoPago')
       .groupBy('venta.id')
       .addGroupBy('venta.total')
-      .getRawMany<{ id: string; total: string }>();
+      .addGroupBy('venta.metodo_pago')
+      .getRawMany<{ id: string; total: string; metodoPago: string }>();
 
     const unidadesRaw = await this.itemsBaseQb(filtro)
       .select('COALESCE(SUM(item.cantidad), 0)', 'unidadesVendidas')
       .getRawOne<{ unidadesVendidas: string }>();
+
+    const unidadesPorMetodo = await this.itemsBaseQb(filtro)
+      .select('venta.metodo_pago', 'metodoPago')
+      .addSelect('COALESCE(SUM(item.cantidad), 0)', 'unidadesVendidas')
+      .groupBy('venta.metodo_pago')
+      .getRawMany<{ metodoPago: string; unidadesVendidas: string }>();
 
     const cantidadVentas = ventasRows.length;
     const totalIngresos = Number(
@@ -39,11 +48,24 @@ export class ReporteService {
         ? Number((totalIngresos / cantidadVentas).toFixed(2))
         : 0;
 
+    const porMetodoPago = buildPorMetodoPago(
+      ventasRows.map((row) => ({
+        metodoPago: row.metodoPago,
+        total: Number(row.total || 0),
+      })),
+      unidadesPorMetodo.map((row) => ({
+        metodoPago: row.metodoPago,
+        unidadesVendidas: Number(row.unidadesVendidas || 0),
+      })),
+      totalIngresos,
+    );
+
     return {
       cantidadVentas,
       totalIngresos,
       unidadesVendidas,
       ticketPromedio,
+      porMetodoPago,
     };
   }
 

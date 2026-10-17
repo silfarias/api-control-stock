@@ -1,14 +1,12 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
-import { AdminGuard } from '../../common/guards/admin.guard.js';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 import { FiltroReporteDto } from './dto/filtro-reporte.dto.js';
 import { ReporteInventarioResponseDto } from './dto/reporte-inventario-response.dto.js';
@@ -27,12 +25,10 @@ export class ReporteController {
   constructor(private readonly reporteService: ReporteService) {}
 
   @Get('ventas')
-  @UseGuards(AdminGuard)
-  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   @ApiOperation({
     summary: 'Resumen de ventas',
     description:
-      'Totales de ventas confirmadas: cantidad, ingresos, unidades y ticket promedio. Solo ADMIN.',
+      'Totales de ventas confirmadas (cantidad, ingresos, unidades, ticket promedio) y desglose por método de pago. Requiere autenticación (ADMIN o EMPLEADO). Fechas `desde`/`hasta` inclusivas sobre created_date en zona horaria de la DB (DB_TIMEZONE, típ. -03:00).',
   })
   @ApiOkResponse({ type: ReporteVentasResponseDto })
   async ventas(
@@ -43,12 +39,10 @@ export class ReporteController {
   }
 
   @Get('ventas/diario')
-  @UseGuards(AdminGuard)
-  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   @ApiOperation({
     summary: 'Ventas por día',
     description:
-      'Cantidad e ingresos agrupados por día en el rango filtrado. Solo ADMIN.',
+      'Cantidad e ingresos agrupados por día. Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @ApiOkResponse({ type: [ReporteVentasDiarioItemDto] })
   async ventasDiario(
@@ -59,12 +53,10 @@ export class ReporteController {
   }
 
   @Get('productos-top')
-  @UseGuards(AdminGuard)
-  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   @ApiOperation({
     summary: 'Productos más vendidos',
     description:
-      'Ranking por unidades vendidas (límite configurable). Solo ADMIN.',
+      'Ranking por unidades vendidas (límite configurable). Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @ApiOkResponse({ type: [ReporteProductoTopItemDto] })
   async productosTop(
@@ -89,12 +81,10 @@ export class ReporteController {
   }
 
   @Get('inventario')
-  @UseGuards(AdminGuard)
-  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   @ApiOperation({
     summary: 'Valorización de inventario',
     description:
-      'Stock actual valorizado a costo y a precio de venta. Solo ADMIN.',
+      'Stock actual valorizado a costo y a precio de venta. Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @ApiOkResponse({ type: ReporteInventarioResponseDto })
   async inventario(
