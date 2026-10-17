@@ -1,0 +1,6 @@
+export enum TipoMovimientoStock {
+  COMPRA = 'COMPRA',
+  VENTA = 'VENTA',
+  AJUSTE_ENTRADA = 'AJUSTE_ENTRADA',
+  AJUSTE_SALIDA = 'AJUSTE_SALIDA',
+}

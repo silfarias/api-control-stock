@@ -5,6 +5,7 @@ import { ErrorHandlerService } from '../../common/services/error-handler.service
 import { GetEntityService } from '../../common/services/get-entity.service.js';
 import { renameOnDelete } from '../../common/utils/rename-on-delete.js';
 import { Categoria } from '../categoria/entities/categoria.entity.js';
+import { InventarioService } from '../inventario/inventario.service.js';
 import { CreateProductoRequestDto } from './dto/create-producto-request.dto.js';
 import { ProductoDTO } from './dto/producto.dto.js';
 import { SearchProductoRequestDto } from './dto/search-producto-request.dto.js';
@@ -18,6 +19,7 @@ export class ProductoService {
   constructor(
     private readonly productoMapper: ProductoMapper,
     private readonly productoRepository: ProductoRepository,
+    private readonly inventarioService: InventarioService,
     private readonly getEntity: GetEntityService,
     private readonly errorHandler: ErrorHandlerService,
   ) {}
@@ -41,6 +43,7 @@ export class ProductoService {
       await this.getEntity.findById(Categoria, request.categoriaId);
       const entity = await this.productoMapper.createDTO2Entity(request);
       const saved = await this.productoRepository.save(entity);
+      await this.inventarioService.crearStockInicial(saved.id);
       return this.findOne(saved.id);
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;

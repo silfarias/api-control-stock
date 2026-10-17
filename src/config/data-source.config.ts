@@ -1,5 +1,9 @@
 import 'dotenv/config';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { DataSource, DataSourceOptions } from 'typeorm';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export const DataSourceConfig: DataSourceOptions = {
   // Hora local por defecto para proyectos de Argentina.
@@ -13,7 +17,7 @@ export const DataSourceConfig: DataSourceOptions = {
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'dbcontrolstock',
   entities: [
-    __dirname + '/../modules/**/entities/*.entity{.ts,.js}',
+    join(__dirname, '..', 'modules', '**', 'entities', '*.entity{.ts,.js}'),
   ],
   logging: false,
   synchronize: true,

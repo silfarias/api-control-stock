@@ -121,6 +121,69 @@ export const ERRORS = {
     },
   },
 
+  INVENTARIO: {
+    STOCK_INSUFICIENTE: {
+      CODE: 'IN01',
+      MESSAGE: 'Stock insuficiente para realizar el movimiento.',
+    },
+    STOCK_NO_ENCONTRADO: {
+      CODE: 'IN02',
+      MESSAGE: 'No se encontró stock para el producto indicado.',
+    },
+  },
+
+  PROVEEDOR: {
+    INACTIVO: {
+      CODE: 'PR01',
+      MESSAGE: 'El proveedor está inactivo.',
+    },
+  },
+
+  COMPRA: {
+    YA_CONFIRMADA: {
+      CODE: 'CO01',
+      MESSAGE: 'La compra ya está confirmada y no puede modificarse.',
+    },
+    SIN_ITEMS: {
+      CODE: 'CO02',
+      MESSAGE: 'La compra debe tener al menos un ítem.',
+    },
+    ESTADO_INVALIDO: {
+      CODE: 'CO03',
+      MESSAGE: 'El estado de la compra no permite esta operación.',
+    },
+  },
+
+  VENTA: {
+    SIN_ITEMS: {
+      CODE: 'VE01',
+      MESSAGE: 'La venta debe tener al menos un ítem.',
+    },
+    ESTADO_INVALIDO: {
+      CODE: 'VE02',
+      MESSAGE: 'El estado de la venta no permite esta operación.',
+    },
+  },
+
+  CAJA: {
+    YA_ABIERTA: {
+      CODE: 'CJ01',
+      MESSAGE: 'Ya existe una caja abierta.',
+    },
+    NO_ABIERTA: {
+      CODE: 'CJ02',
+      MESSAGE: 'No hay una caja abierta.',
+    },
+    YA_CERRADA: {
+      CODE: 'CJ03',
+      MESSAGE: 'La caja ya está cerrada.',
+    },
+    ESTADO_INVALIDO: {
+      CODE: 'CJ04',
+      MESSAGE: 'El estado de la caja no permite esta operación.',
+    },
+  },
+
   // Definición de errores de sesión
   SESSION: {
     SESSION_EXPIRED: {
