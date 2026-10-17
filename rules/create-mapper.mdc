@@ -1,0 +1,75 @@
+---
+description: Crear mapper con entity2DTO, page2Dto, createDTO2Entity y updateDTO2Entity
+globs: src/schematics/**/mappers/*.mapper.ts
+alwaysApply: false
+---
+# Regla para generar mapper
+
+Ubicación: `src/schematics/{modulo}/mappers/{modulo}.mapper.ts`.
+
+## Métodos obligatorios
+
+- `entity2DTO(entity)`
+- `page2Dto(request, page)`
+- `createDTO2Entity(request, ...deps)`
+- `updateDTO2Entity(entity, request)`
+
+## Reglas de implementación
+
+- Usar `plainToInstance(DTO, entity, { excludeExtraneousValues: true })`.
+- Mapear relaciones explícitas cuando existan (ej. `personaMapper.entity2DTO(...)`).
+- Mantener hashes/conversiones técnicas en mapper solo si forman parte de la transformación (ej. hash de contraseña).
+
+## Ejemplo actualizado (estilo real de plantilla)
+
+```ts
+import { Injectable } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import * as bcrypt from 'bcrypt';
+import { PageDto } from 'src/common/dto/page.dto';
+import { Categoria } from 'src/schematics/categoria/entities/categoria.entity';
+import { Producto } from '../entities/producto.entity';
+import { ProductoDTO } from '../dto/producto.dto';
+import { SearchProductoRequestDto } from '../dto/search-producto-request.dto';
+import { CreateProductoRequestDto } from '../dto/create-producto-request.dto';
+import { UpdateProductoRequestDto } from '../dto/update-producto-request.dto';
+
+@Injectable()
+export class ProductoMapper {
+  async entity2DTO(producto: Producto): Promise<ProductoDTO> {
+    return plainToInstance(ProductoDTO, producto, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  async page2Dto(
+    request: SearchProductoRequestDto,
+    page: PageDto<Producto>,
+  ): Promise<PageDto<ProductoDTO>> {
+    const dtos = await Promise.all(page.data.map((item) => this.entity2DTO(item)));
+    const pageDto = new PageDto<ProductoDTO>(dtos, page.metadata.count);
+    pageDto.metadata.setPaginationData(request.pageNumber, request.pageSize);
+    pageDto.metadata.sortBy = request.orderBy;
+    return pageDto;
+  }
+
+  async createDTO2Entity(request: CreateProductoRequestDto): Promise<Producto> {
+    const producto = new Producto();
+    producto.nombre = request.nombre;
+    producto.precio = request.precio;
+    if (request.categoriaId) {
+      producto.categoria = Categoria.fromId(request.categoriaId);
+    }
+    return producto;
+  }
+
+  async updateDTO2Entity(entity: Producto, request: UpdateProductoRequestDto): Promise<Producto> {
+    if (request.nombre !== undefined) entity.nombre = request.nombre;
+    if (request.precio !== undefined) entity.precio = request.precio;
+    // ejemplo técnico opcional (si el módulo lo requiere):
+    if (request.codigoPrivado) entity.codigoPrivado = await bcrypt.hash(request.codigoPrivado, 10);
+    return entity;
+  }
+}
+```
+

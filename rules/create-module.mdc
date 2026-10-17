@@ -1,0 +1,62 @@
+---
+description: Crear módulo completo bajo src/schematics con estructura y alta en AppModule
+globs: src/schematics/**
+alwaysApply: false
+---
+# Regla para crear un módulo nuevo
+
+Cuando se solicite crear un módulo, generar carpeta en `src/schematics/{modulo}` y dar de alta su `{modulo}.module.ts` en `src/app.module.ts`.
+
+## Estructura base obligatoria
+
+```txt
+src/
+└── schematics/
+    └── {modulo}/
+        ├── dto/
+        │   ├── create-{modulo}-request.dto.ts
+        │   ├── update-{modulo}-request.dto.ts
+        │   ├── search-{modulo}-request.dto.ts
+        │   └── {modulo}.dto.ts
+        ├── entities/
+        │   └── {modulo}.entity.ts
+        ├── mappers/
+        │   └── {modulo}.mapper.ts
+        ├── repository/
+        │   └── {modulo}.repository.ts
+        ├── services/                       # opcional, para sub-servicios
+        ├── {modulo}.controller.ts
+        ├── {modulo}.service.ts
+        └── {modulo}.module.ts
+```
+
+## Reglas importantes de la plantilla actual
+
+- Usar patrón `Controller -> Service -> Repository + Mapper`.
+- No crear interceptor de auditoría manual (la auditoría actual es por subscriber global).
+- No asumir que todos los endpoints GET deben tener auth; definirlo por caso de uso.
+- Si existe flujo central (ej. alta de usuario en auth), no duplicarlo en el módulo.
+- Si módulo ya existe, pedir confirmación antes de sobrescribir.
+
+## Ejemplo de alta en `AppModule`
+
+```ts
+import { ProductoModule } from './schematics/producto/producto.module';
+
+@Module({
+  imports: [
+    // ...otros módulos
+    ProductoModule,
+  ],
+})
+export class AppModule {}
+```
+
+## Reglas relacionadas
+
+- Entidad: `rules/create-entity.mdc`
+- DTOs: `rules/create-dto.mdc`
+- Repository: `rules/create-repository.mdc`
+- Mapper: `rules/create-mapper.mdc`
+- Service: `rules/create-service.mdc`
+- Controller: `rules/create-controller.mdc`

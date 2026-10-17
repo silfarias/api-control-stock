@@ -1,0 +1,59 @@
+---
+description: Crear entidad TypeORM con convenciones actuales de plantilla y auditoría
+globs: src/schematics/**/entities/*.entity.ts
+alwaysApply: false
+---
+# Regla para generar entidad
+
+Ubicación: `src/schematics/{modulo}/entities/{modulo}.entity.ts`.
+
+## Reglas obligatorias
+
+- `@Entity('nombre_tabla')`.
+- Extender `BaseEntity` del proyecto.
+- Columnas con tipos explícitos y opciones (`nullable`, `default`, `unique`) correctas.
+- Relaciones solo cuando son necesarias en dominio.
+- Método estático `fromId` cuando se referencia desde mappers.
+
+## Reglas de auditoría (plantilla actual)
+
+- Si un campo es sensible (`password`, `codigo`, `token`), marcar con `@AuditExclude()`.
+- Si una entidad no debe auditarse completa, usar `@AuditExcludeEntity()`.
+
+## Estilo recomendado
+
+- Orden: columnas -> relaciones -> métodos estáticos.
+- Nombres de propiedades en camelCase.
+- Evitar lógica de negocio compleja dentro de entidad.
+
+## Ejemplo actualizado
+
+```ts
+import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { BaseEntity } from 'src/common/baseentity/base.entity';
+import { Categoria } from 'src/schematics/categoria/entities/categoria.entity';
+import { AuditExclude } from 'src/schematics/audit/decorators/audit-exclude.decorator';
+
+@Entity('producto')
+export class Producto extends BaseEntity {
+  @Column({ type: 'varchar', length: 120 })
+  nombre: string;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  precio: number;
+
+  @AuditExclude()
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  codigoPrivado?: string;
+
+  @ManyToOne(() => Categoria, { nullable: true })
+  @JoinColumn({ name: 'categoria_id' })
+  categoria?: Categoria;
+
+  static fromId(id: number): Producto {
+    const item = new Producto();
+    item.id = id;
+    return item;
+  }
+}
+```

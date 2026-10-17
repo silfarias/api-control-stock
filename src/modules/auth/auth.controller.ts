@@ -1,0 +1,151 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
+import { UsuarioDTO } from '../usuario/dto/usuario.dto.js';
+import { AuthService } from './auth.service.js';
+import { ChangePasswordRequestDto } from './dto/change-password-request.dto.js';
+import { ChangePasswordResponseDto } from './dto/change-password-response.dto.js';
+import { LoginRequestDto } from './dto/login-request.dto.js';
+import { LoginResponseDto } from './dto/login-response.dto.js';
+import { RefreshTokenRequestDto } from './dto/refresh-token-request.dto.js';
+import { SignupRequestDto } from './dto/signup-request.dto.js';
+import { SignupResponseDto } from './dto/signup-response.dto.js';
+
+@ApiTags('Auth')
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('signup')
+  @ApiOperation({
+    summary: 'Registrar nuevo usuario',
+    description:
+      'Registra un usuario con rol EMPLEADO y devuelve access_token + refresh_token.',
+  })
+  @ApiBody({ type: SignupRequestDto, description: 'Datos del nuevo usuario' })
+  @ApiCreatedResponse({
+    type: SignupResponseDto,
+    description: 'Usuario registrado y autenticado',
+  })
+  @ApiBadRequestResponse({ description: 'Datos inválidos' })
+  @ApiConflictResponse({ description: 'Email ya registrado' })
+  async signup(@Body() body: SignupRequestDto): Promise<SignupResponseDto> {
+    return this.authService.signup(body);
+  }
+
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('login')
+  @ApiOperation({
+    summary: 'Iniciar sesión',
+    description:
+      'Autentica con email y password. Devuelve access_token y refresh_token.',
+  })
+  @ApiBody({ type: LoginRequestDto, description: 'Credenciales' })
+  @ApiOkResponse({ type: LoginResponseDto, description: 'Login exitoso' })
+  @ApiBadRequestResponse({ description: 'Solicitud incorrecta' })
+  @ApiUnauthorizedResponse({ description: 'Credenciales inválidas' })
+  async login(@Body() body: LoginRequestDto): Promise<LoginResponseDto> {
+    const usuario = await this.authService.validateUser(
+      body.email,
+      body.password,
+    );
+    return this.authService.login(usuario);
+  }
+
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 15, ttl: 60_000 } })
+  @Post('refresh')
+  @ApiOperation({
+    summary: 'Renovar tokens',
+    description:
+      'Intercambia un refresh_token válido por un nuevo par de tokens.',
+  })
+  @ApiBody({ type: RefreshTokenRequestDto })
+  @ApiOkResponse({ type: LoginResponseDto, description: 'Tokens renovados' })
+  @ApiUnauthorizedResponse({ description: 'Refresh token inválido o expirado' })
+  async refresh(@Body() body: RefreshTokenRequestDto): Promise<LoginResponseDto> {
+    return this.authService.refreshTokens(body.refresh_token);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
+  @ApiOperation({
+    summary: 'Usuario autenticado',
+    description: 'Devuelve los datos del usuario del access_token.',
+  })
+  @ApiOkResponse({ type: UsuarioDTO, description: 'Usuario actual' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async getCurrentUser(
+    @Request() req: { user: { id: number } },
+  ): Promise<UsuarioDTO> {
+    return this.authService.getCurrentUser(req.user.id);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
+  @ApiOperation({
+    summary: 'Cerrar sesión',
+    description:
+      'Cierra la sesión. El cliente debe eliminar los tokens del almacenamiento local.',
+  })
+  @ApiOkResponse({
+    description: 'Sesión cerrada',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Sesión cerrada exitosamente' },
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async logout(
+    @Request() req: { user: { id: number } },
+  ): Promise<{ message: string }> {
+    return this.authService.logout(req.user.id);
+  }
+
+  @Patch('change-password')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
+  @ApiOperation({
+    summary: 'Cambiar contraseña',
+    description: 'Cambia la contraseña del usuario autenticado.',
+  })
+  @ApiBody({ type: ChangePasswordRequestDto })
+  @ApiOkResponse({
+    type: ChangePasswordResponseDto,
+    description: 'Contraseña actualizada',
+  })
+  @ApiBadRequestResponse({ description: 'Datos inválidos o no coinciden' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async changePassword(
+    @Request() req: { user: { id: number } },
+    @Body() body: ChangePasswordRequestDto,
+  ): Promise<ChangePasswordResponseDto> {
+    return this.authService.changePassword(body, req.user.id);
+  }
+}

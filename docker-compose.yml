@@ -1,0 +1,16 @@
+services:
+  mysql:
+    image: mysql:9.7
+    container_name: control-stock-mysql
+    restart: unless-stopped
+    ports:
+      - '${DB_PORT:-3306}:3306'
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-time-zone=${DB_TIMEZONE:--03:00} --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+volumes:
+  mysql_data:

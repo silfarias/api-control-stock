@@ -1,0 +1,122 @@
+---
+description: Definir DTOs create/update/search/response con validaciones y swagger
+globs: src/schematics/**/dto/*.ts
+alwaysApply: false
+---
+# Regla para generar DTOs
+
+Ubicación: `src/schematics/{modulo}/dto/`.
+
+## Archivos obligatorios
+
+- `create-{modulo}-request.dto.ts`
+- `update-{modulo}-request.dto.ts`
+- `search-{modulo}-request.dto.ts`
+- `{modulo}.dto.ts`
+
+## Reglas clave de la plantilla
+
+- DTO de salida extiende `CommonDTO`, usa `@Expose()` y `@ApiProperty`.
+- DTO de búsqueda extiende `BaseSearchDto` (hereda `q`, `orderBy`, `orderDirection`, `groupBy`, `pageNumber`, `pageSize`).
+- DTO create/update usa `class-validator`.
+- Para números que llegan por query/body string, usar `@Type(() => Number)` cuando corresponda.
+- Evitar tipos ambiguos (`number | string`) si no son necesarios.
+
+## Ejemplo completo
+
+```ts
+// producto.dto.ts
+import { ApiProperty } from '@nestjs/swagger';
+import { Expose, Type } from 'class-transformer';
+import { CommonDTO } from 'src/common/dto/common.dto';
+import { CategoriaDTO } from 'src/schematics/categoria/dto/categoria.dto';
+
+export class ProductoDTO extends CommonDTO {
+  @ApiProperty({ description: 'Nombre del producto', type: String })
+  @Expose()
+  nombre: string;
+
+  @ApiProperty({ description: 'Precio del producto', type: Number })
+  @Expose()
+  precio: number;
+
+  @ApiProperty({ description: 'Categoría', type: () => CategoriaDTO, required: false })
+  @Type(() => CategoriaDTO)
+  @Expose()
+  categoria?: CategoriaDTO;
+}
+```
+
+```ts
+// create-producto-request.dto.ts
+import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsNumber, IsOptional, IsString, Min } from 'class-validator';
+
+export class CreateProductoRequestDto {
+  @ApiProperty({ description: 'Nombre del producto', type: String })
+  @IsString()
+  nombre: string;
+
+  @ApiProperty({ description: 'Precio', type: Number })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  precio: number;
+
+  @ApiProperty({ description: 'ID de categoría', type: Number, required: false })
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  categoriaId?: number;
+}
+```
+
+```ts
+// update-producto-request.dto.ts
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsNumber, IsOptional, IsString, Min } from 'class-validator';
+
+export class UpdateProductoRequestDto {
+  @ApiPropertyOptional({ description: 'Nombre del producto', type: String })
+  @IsOptional()
+  @IsString()
+  nombre?: string;
+
+  @ApiPropertyOptional({ description: 'Precio', type: Number })
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  precio?: number;
+
+  @ApiPropertyOptional({ description: 'ID de categoría', type: Number })
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  categoriaId?: number;
+}
+```
+
+```ts
+// search-producto-request.dto.ts
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsNumber, IsOptional, IsString } from 'class-validator';
+import { BaseSearchDto } from 'src/common/dto/base-search.dto';
+
+export class SearchProductoRequestDto extends BaseSearchDto {
+  @ApiPropertyOptional({ description: 'Filtrar por ID', type: Number })
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  id?: number;
+
+  @ApiPropertyOptional({ description: 'Filtrar por nombre', type: String })
+  @IsOptional()
+  @IsString()
+  nombre?: string;
+}
+```
+

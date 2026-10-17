@@ -1,0 +1,138 @@
+---
+description: Crear controller REST con Swagger y transformación de query DTO
+globs: src/schematics/**/*.controller.ts
+alwaysApply: false
+---
+# Regla para generar controller
+
+Ubicación: `src/schematics/{modulo}/{modulo}.controller.ts`.
+
+## Reglas obligatorias
+
+- Usar `@ApiTags('{Modulo}')`.
+- Para búsqueda usar `GET /search` con `@Query()` + `plainToInstance(SearchDto, request)`.
+- Parsear IDs con `ParseIntPipe`.
+- Delegar lógica de negocio al service (controller delgado).
+- Documentar de forma completa con Swagger:
+  - `@ApiOperation`
+  - `@ApiParam` en rutas con `:id`
+  - `@ApiBody` para `POST`/`PATCH`
+  - `@ApiOkResponse`
+  - `@ApiBadRequestResponse`
+  - `@ApiNotFoundResponse` cuando aplique
+  - `@ApiUnauthorizedResponse` en endpoints protegidos
+
+## Seguridad
+
+- Definir `@UseGuards(...)` y `@ApiBearerAuth(...)` por endpoint.
+- No forzar auth en todos los GET: depende del caso de negocio.
+
+## Ejemplo actualizado (basado en patrón de `usuario`)
+
+```ts
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBody,
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
+import { plainToInstance } from 'class-transformer';
+import { FlexibleJwtAuthGuard } from 'src/common/guards/flexible-jwt-auth.guard';
+import { PageDto } from 'src/common/dto/page.dto';
+import { ProductoService } from './producto.service';
+import { ProductoDTO } from './dto/producto.dto';
+import { CreateProductoRequestDto } from './dto/create-producto-request.dto';
+import { UpdateProductoRequestDto } from './dto/update-producto-request.dto';
+import { SearchProductoRequestDto } from './dto/search-producto-request.dto';
+
+@ApiTags('Producto')
+@Controller('producto')
+export class ProductoController {
+  constructor(private readonly productoService: ProductoService) {}
+
+  @Get('search')
+  @ApiOperation({ summary: 'Buscar productos', description: 'Busca productos con filtros opcionales' })
+  @ApiOkResponse({ type: PageDto<ProductoDTO>, description: 'Lista paginada de productos' })
+  @ApiBadRequestResponse({ description: 'Solicitud incorrecta' })
+  async search(@Query() request: SearchProductoRequestDto): Promise<PageDto<ProductoDTO>> {
+    const req = plainToInstance(SearchProductoRequestDto, request);
+    return this.productoService.search(req);
+  }
+
+  @Post()
+  @UseGuards(FlexibleJwtAuthGuard)
+  @ApiBearerAuth('authorization')
+  @ApiOperation({ summary: 'Crear producto' })
+  @ApiBody({ type: CreateProductoRequestDto, description: 'Datos para crear producto' })
+  @ApiOkResponse({ type: ProductoDTO, description: 'Producto creado correctamente' })
+  @ApiBadRequestResponse({ description: 'Solicitud incorrecta' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async create(@Body() request: CreateProductoRequestDto): Promise<ProductoDTO> {
+    return this.productoService.create(request);
+  }
+
+  @Patch(':id')
+  @UseGuards(FlexibleJwtAuthGuard)
+  @ApiBearerAuth('authorization')
+  @ApiOperation({ summary: 'Actualizar producto' })
+  @ApiParam({ name: 'id', required: true, description: 'ID del producto' })
+  @ApiBody({ type: UpdateProductoRequestDto, description: 'Datos a actualizar' })
+  @ApiOkResponse({ type: ProductoDTO, description: 'Producto actualizado correctamente' })
+  @ApiBadRequestResponse({ description: 'Solicitud incorrecta' })
+  @ApiNotFoundResponse({ description: 'No se encontró el producto' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async update(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() request: UpdateProductoRequestDto,
+  ): Promise<ProductoDTO> {
+    return this.productoService.update(id, request, req.user);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Obtener producto por ID' })
+  @ApiParam({ name: 'id', required: true, description: 'ID del producto' })
+  @ApiOkResponse({ type: ProductoDTO, description: 'Producto encontrado' })
+  @ApiBadRequestResponse({ description: 'Solicitud incorrecta' })
+  @ApiNotFoundResponse({ description: 'No se encontró el producto' })
+  async findOne(@Param('id', ParseIntPipe) id: number): Promise<ProductoDTO> {
+    return this.productoService.findOne(id);
+  }
+
+  @Delete(':id')
+  @UseGuards(FlexibleJwtAuthGuard)
+  @ApiBearerAuth('authorization')
+  @ApiOperation({ summary: 'Eliminar producto' })
+  @ApiParam({ name: 'id', required: true, description: 'ID del producto' })
+  @ApiOkResponse({ description: 'Producto eliminado correctamente' })
+  @ApiBadRequestResponse({ description: 'Solicitud incorrecta' })
+  @ApiNotFoundResponse({ description: 'No se encontró el producto' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async remove(@Request() req: any, @Param('id', ParseIntPipe) id: number): Promise<string> {
+    return this.productoService.remove(id, req.user);
+  }
+}
+```
+
+## Nota de consistencia con la plantilla
+
+- Tomar `src/schematics/usuario/usuario.controller.ts` como referencia de nivel de detalle Swagger.
+

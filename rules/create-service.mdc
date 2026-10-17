@@ -1,0 +1,116 @@
+---
+description: Crear service modular con validaciones y transacciones cuando aplique
+globs: src/schematics/**/*.service.ts
+alwaysApply: false
+---
+# Regla para generar service
+
+Ubicación: `src/schematics/{modulo}/{modulo}.service.ts`.
+
+## Reglas obligatorias
+
+- Clase con `@Injectable()`.
+- El service orquesta casos de uso; no hace acceso directo SQL.
+- Usar `Repository` para persistencia y `Mapper` para conversiones DTO.
+- Usar servicios comunes del template cuando aplique (`GetEntityService`, `ErrorHandlerService`).
+- Manejar errores con patrón del template:
+  - `try/catch` en métodos de escritura.
+  - Si el error ya es `HttpException`, relanzar.
+  - Si no, delegar a `errorHandler.handleError(error)`.
+- Para operaciones multi-entidad, usar transacciones.
+
+## Firma recomendada de métodos
+
+- `create(request, file?)`
+- `update(id, request, actor?, file?)`
+- `findOne(id)`
+- `search(request)`
+- `remove(id, actor?)`
+
+## Ejemplo actualizado (patrón real de la plantilla)
+
+```ts
+import { Injectable } from '@nestjs/common';
+import { PageDto } from 'src/common/dto/page.dto';
+import { ERRORS } from 'src/common/errors/errors-codes';
+import { ErrorHandlerService } from 'src/common/services/error-handler.service';
+import { GetEntityService } from 'src/common/services/get-entity.service';
+import { Producto } from './entities/producto.entity';
+import { ProductoMapper } from './mappers/producto.mapper';
+import { ProductoRepository } from './repository/producto.repository';
+import { ProductoDTO } from './dto/producto.dto';
+import { SearchProductoRequestDto } from './dto/search-producto-request.dto';
+import { CreateProductoRequestDto } from './dto/create-producto-request.dto';
+import { UpdateProductoRequestDto } from './dto/update-producto-request.dto';
+
+type ActorContext = { id?: number; rolId?: number };
+
+@Injectable()
+export class ProductoService {
+  constructor(
+    private readonly productoMapper: ProductoMapper,
+    private readonly productoRepository: ProductoRepository,
+    private readonly getEntity: GetEntityService,
+    private readonly errorHandler: ErrorHandlerService,
+  ) {}
+
+  async findOne(id: number): Promise<ProductoDTO> {
+    const producto = await this.getEntity.findById(Producto, id);
+    return this.productoMapper.entity2DTO(producto);
+  }
+
+  async search(request: SearchProductoRequestDto): Promise<PageDto<ProductoDTO>> {
+    const page = await this.productoRepository.search(request);
+    return this.productoMapper.page2Dto(request, page);
+  }
+
+  async create(request: CreateProductoRequestDto): Promise<ProductoDTO> {
+    try {
+      const entity = await this.productoMapper.createDTO2Entity(request);
+      const saved = await this.productoRepository.save(entity);
+      return this.productoMapper.entity2DTO(saved);
+    } catch (error) {
+      if (this.errorHandler.isHttpException(error)) throw error;
+      this.errorHandler.handleError(error);
+    }
+  }
+
+  async update(id: number, request: UpdateProductoRequestDto, actor: ActorContext = {}): Promise<ProductoDTO> {
+    try {
+      const producto = await this.getEntity.findById(Producto, id);
+      // aplicar regla de autorización propia aquí si corresponde
+      const updated = await this.productoMapper.updateDTO2Entity(producto, request);
+      await this.productoRepository.save(updated);
+      return this.productoMapper.entity2DTO(updated);
+    } catch (error) {
+      if (this.errorHandler.isHttpException(error)) throw error;
+      this.errorHandler.handleError(error);
+    }
+  }
+
+  async remove(id: number, actor: ActorContext = {}): Promise<string> {
+    try {
+      await this.productoRepository.manager.transaction(async (manager) => {
+        const producto = await manager.getRepository(Producto).findOne({ where: { id } });
+        if (!producto) {
+          this.errorHandler.throwNotFound(ERRORS.DATABASE.RECORD_NOT_FOUND, { id });
+        }
+        await manager.getRepository(Producto).softRemove(producto);
+      });
+      return 'Registro eliminado correctamente';
+    } catch (error) {
+      if (this.errorHandler.isHttpException(error)) throw error;
+      this.errorHandler.handleError(error);
+    }
+  }
+}
+```
+
+## Nota de consistencia con la plantilla
+
+- Tomar como referencia `src/schematics/usuario/usuario.service.ts` para patrón de:
+  - `ErrorHandlerService`
+  - validaciones centralizadas
+  - uso de transacciones
+  - contexto de actor para autorización cuando corresponda
+

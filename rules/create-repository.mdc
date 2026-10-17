@@ -1,0 +1,71 @@
+---
+description: Crear repositorio con filtros, q, orden dinámico y paginación estandarizada
+globs: src/schematics/**/repository/*.repository.ts
+alwaysApply: false
+---
+# Regla para generar repository
+
+Ubicación: `src/schematics/{modulo}/repository/{modulo}.repository.ts`.
+
+## Estructura obligatoria
+
+- Extender `Repository<Entidad>`.
+- Decorar con `@Injectable()`.
+- Constructor con `DataSource` y `super(Entidad, dataSource.createEntityManager())`.
+- Método `search(request)` que retorne `Promise<PageDto<Entidad>>`.
+
+## Reglas de búsqueda de la plantilla (obligatorias)
+
+- Filtros específicos por campos (`id`, `estado`, etc.).
+- Full text por `q` usando `applyTextSearch(...)`.
+- Sorting/group/paginación usando `applySearchQueryOptions(...)`.
+- No usar `SORTABLE_FIELDS` hardcodeado; ahora se resuelve por metadata.
+
+## Ejemplo actualizado (basado en `usuario.repository.ts`)
+
+```ts
+import { Injectable } from '@nestjs/common';
+import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
+import { PageDto } from 'src/common/dto/page.dto';
+import { applySearchQueryOptions, applyTextSearch } from 'src/common/utils/search-query.util';
+import { Producto } from '../entities/producto.entity';
+import { SearchProductoRequestDto } from '../dto/search-producto-request.dto';
+
+@Injectable()
+export class ProductoRepository extends Repository<Producto> {
+  constructor(private readonly dataSource: DataSource) {
+    super(Producto, dataSource.createEntityManager());
+  }
+
+  async search(request: SearchProductoRequestDto): Promise<PageDto<Producto>> {
+    const queryBuilder: SelectQueryBuilder<Producto> = this.createQueryBuilder('producto')
+      .leftJoinAndSelect('producto.categoria', 'categoria');
+
+    if (request.id) {
+      queryBuilder.andWhere('producto.id = :id', { id: request.id });
+    }
+
+    if (request.nombre) {
+      queryBuilder.andWhere('LOWER(producto.nombre) LIKE LOWER(:nombre)', {
+        nombre: `%${request.nombre}%`,
+      });
+    }
+
+    applyTextSearch(queryBuilder, request.q, [
+      'producto.nombre',
+      'producto.descripcion',
+      'categoria.nombre',
+    ]);
+
+    applySearchQueryOptions(queryBuilder, request, 'id');
+
+    const [list, count] = await queryBuilder.getManyAndCount();
+    return new PageDto<Producto>(list, count);
+  }
+}
+```
+
+## Debe evitar
+
+- Repetir `.skip().take().orderBy()` manual en todos los repositorios.
+- Importar lógica de negocio en repository.
