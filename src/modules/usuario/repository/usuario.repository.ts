@@ -14,6 +14,12 @@ export class UsuarioRepository extends Repository<Usuario> {
     super(Usuario, dataSource.createEntityManager());
   }
 
+  async findByEmail(email: string): Promise<Usuario | null> {
+    return this.findOne({
+      where: { email: email.toLowerCase().trim() },
+    });
+  }
+
   async search(request: SearchUsuarioRequestDto): Promise<PageDto<Usuario>> {
     const queryBuilder: SelectQueryBuilder<Usuario> =
       this.createQueryBuilder('usuario');

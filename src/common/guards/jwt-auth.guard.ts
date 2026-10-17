@@ -4,7 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import * as jwt from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 import { getAccessTokenSecret } from '../../config/auth-secrets.js';
 import { UsuarioRole } from '../enums/usuario-role.enum.js';
 import { JwtPayload, RequestUser } from '../interfaces/jwt.interface.js';
@@ -64,12 +64,17 @@ export class JwtAuthGuard implements CanActivate {
       if (error instanceof UnauthorizedException) {
         throw error;
       }
-      if (error instanceof jwt.TokenExpiredError) {
+
+      // jsonwebtoken es CJS: no usar instanceof con clases del namespace ESM
+      const name = error instanceof Error ? error.name : '';
+      if (name === 'TokenExpiredError') {
         throw new UnauthorizedException('Token expirado');
       }
-      if (error instanceof jwt.JsonWebTokenError) {
-        throw new UnauthorizedException(`Token inválido: ${error.message}`);
+      if (name === 'JsonWebTokenError' || name === 'NotBeforeError') {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new UnauthorizedException(`Token inválido: ${message}`);
       }
+
       const message = error instanceof Error ? error.message : String(error);
       throw new UnauthorizedException(`Error al procesar el token: ${message}`);
     }

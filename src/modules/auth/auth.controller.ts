@@ -13,6 +13,7 @@ import {
   ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -27,6 +28,7 @@ import { ChangePasswordResponseDto } from './dto/change-password-response.dto.js
 import { LoginRequestDto } from './dto/login-request.dto.js';
 import { LoginResponseDto } from './dto/login-response.dto.js';
 import { RefreshTokenRequestDto } from './dto/refresh-token-request.dto.js';
+import { SeedAdminResponseDto } from './dto/seed-admin-response.dto.js';
 import { SignupRequestDto } from './dto/signup-request.dto.js';
 import { SignupResponseDto } from './dto/signup-response.dto.js';
 
@@ -52,6 +54,22 @@ export class AuthController {
   @ApiConflictResponse({ description: 'Email ya registrado' })
   async signup(@Body() body: SignupRequestDto): Promise<SignupResponseDto> {
     return this.authService.signup(body);
+  }
+
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @Post('seed-admin')
+  @ApiOperation({
+    summary: 'Crear usuario ADMIN inicial',
+    description:
+      'Bootstrap idempotente del admin (Silvana). Requiere SEED_ADMIN_ENABLED=true. Si ya existe, solo autentica.',
+  })
+  @ApiOkResponse({ type: SeedAdminResponseDto })
+  @ApiForbiddenResponse({
+    description: 'Seed deshabilitado (SEED_ADMIN_ENABLED≠true)',
+  })
+  async seedAdmin(): Promise<SeedAdminResponseDto> {
+    return this.authService.seedAdmin();
   }
 
   @UseGuards(ThrottlerGuard)

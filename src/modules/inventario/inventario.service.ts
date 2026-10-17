@@ -102,6 +102,48 @@ export class InventarioService {
     }
   }
 
+  /**
+   * Inicializa stock al crear un producto.
+   * cantidad 0 → solo registro en 0.
+   * cantidad > 0 → movimiento AJUSTE_ENTRADA (fuente única de verdad).
+   */
+  async inicializarStockProducto(
+    params: {
+      productoId: number;
+      cantidad: number;
+      usuarioId: number;
+    },
+    manager: EntityManager,
+  ): Promise<void> {
+    if (params.cantidad <= 0) {
+      const stockRepo = manager.getRepository(Stock);
+      const existente = await stockRepo.findOne({
+        where: { producto: { id: params.productoId } },
+      });
+      if (!existente) {
+        await stockRepo.save(
+          stockRepo.create({
+            producto: Producto.fromId(params.productoId),
+            cantidad: 0,
+          }),
+        );
+      }
+      return;
+    }
+
+    await this.aplicarMovimiento(
+      {
+        productoId: params.productoId,
+        tipo: TipoMovimientoStock.AJUSTE_ENTRADA,
+        cantidad: params.cantidad,
+        tipoReferencia: TipoReferenciaMovimiento.AJUSTE,
+        motivo: 'Stock inicial al crear producto',
+        usuarioId: params.usuarioId,
+      },
+      manager,
+    );
+  }
+
   async crearAjuste(
     request: CreateAjusteStockRequestDto,
     actor: RequestUser,

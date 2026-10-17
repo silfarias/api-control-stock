@@ -5,7 +5,7 @@ import { BaseSearchDto } from '../../../common/dto/base-search.dto.js';
 import { UsuarioRole } from '../../../common/enums/usuario-role.enum.js';
 
 export class SearchUsuarioRequestDto extends BaseSearchDto {
-  @ApiPropertyOptional({ description: 'Filtrar por ID', type: Number, example: 1 })
+  @ApiPropertyOptional({ description: 'Filtrar por ID', type: Number })
   @Type(() => Number)
   @IsOptional()
   @IsNumber()
@@ -14,7 +14,6 @@ export class SearchUsuarioRequestDto extends BaseSearchDto {
   @ApiPropertyOptional({
     description: 'Filtrar por nombre (parcial, case-insensitive)',
     type: String,
-    example: 'Ana',
   })
   @IsOptional()
   @IsString()
@@ -23,7 +22,6 @@ export class SearchUsuarioRequestDto extends BaseSearchDto {
   @ApiPropertyOptional({
     description: 'Filtrar por email exacto',
     type: String,
-    example: 'ana@empresa.com',
   })
   @IsOptional()
   @IsEmail()
@@ -33,7 +31,6 @@ export class SearchUsuarioRequestDto extends BaseSearchDto {
     description: 'Filtrar por rol',
     enum: UsuarioRole,
     enumName: 'UsuarioRole',
-    example: UsuarioRole.EMPLEADO,
   })
   @IsOptional()
   @IsEnum(UsuarioRole)

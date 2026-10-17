@@ -7,7 +7,9 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { CreateProductoStockRequestDto } from './create-producto-stock-request.dto.js';
 
 export class CreateProductoRequestDto {
   @ApiProperty({
@@ -96,4 +98,14 @@ export class CreateProductoRequestDto {
   @IsNumber()
   @Min(0)
   minimoStock: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Stock inicial opcional. Si se omite, el producto queda con stock 0.',
+    type: CreateProductoStockRequestDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateProductoStockRequestDto)
+  stock?: CreateProductoStockRequestDto;
 }

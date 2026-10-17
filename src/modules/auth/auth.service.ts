@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
   getAccessTokenSecret,
@@ -12,8 +16,15 @@ import { UsuarioService } from '../usuario/usuario.service.js';
 import { ChangePasswordRequestDto } from './dto/change-password-request.dto.js';
 import { ChangePasswordResponseDto } from './dto/change-password-response.dto.js';
 import { LoginResponseDto } from './dto/login-response.dto.js';
+import { SeedAdminResponseDto } from './dto/seed-admin-response.dto.js';
 import { SignupRequestDto } from './dto/signup-request.dto.js';
 import { SignupResponseDto } from './dto/signup-response.dto.js';
+
+const DEFAULT_SEED_ADMIN = {
+  nombre: 'Silvana',
+  email: 'silvifarias17@gmail.com',
+  password: 'Sfa140320',
+} as const;
 
 @Injectable()
 export class AuthService {
@@ -128,6 +139,58 @@ export class AuthService {
       expires_in: this.getAccessTokenExpiresIn(),
       usuario,
       message: 'Usuario registrado y autenticado exitosamente',
+    };
+  }
+
+  /**
+   * Crea el usuario ADMIN inicial (idempotente).
+   * Solo habilitado con SEED_ADMIN_ENABLED=true (dev / bootstrap).
+   */
+  async seedAdmin(): Promise<SeedAdminResponseDto> {
+    if (process.env.SEED_ADMIN_ENABLED !== 'true') {
+      throw new ForbiddenException({
+        code: ERRORS.AUTHORIZATION.FORBIDDEN.CODE,
+        message:
+          'Seed admin deshabilitado. Seteá SEED_ADMIN_ENABLED=true en .env',
+      });
+    }
+
+    const nombre =
+      process.env.SEED_ADMIN_NOMBRE?.trim() || DEFAULT_SEED_ADMIN.nombre;
+    const email =
+      process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase() ||
+      DEFAULT_SEED_ADMIN.email;
+    const password =
+      process.env.SEED_ADMIN_PASSWORD?.trim() || DEFAULT_SEED_ADMIN.password;
+
+    const existente = await this.usuarioService.findByEmail(email);
+    if (existente) {
+      const tokens = this.generateTokenPair(existente);
+      return {
+        created: false,
+        message: 'El usuario admin ya existía',
+        usuario: existente,
+        ...tokens,
+        expires_in: this.getAccessTokenExpiresIn(),
+      };
+    }
+
+    const createDto: CreateUsuarioRequestDto = {
+      nombre,
+      email,
+      password,
+      role: UsuarioRole.ADMIN,
+    };
+
+    const usuario = await this.usuarioService.create(createDto);
+    const tokens = this.generateTokenPair(usuario);
+
+    return {
+      created: true,
+      message: 'Usuario admin creado correctamente',
+      usuario,
+      ...tokens,
+      expires_in: this.getAccessTokenExpiresIn(),
     };
   }
 

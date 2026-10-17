@@ -4,7 +4,7 @@ import { IsNumber, IsOptional, IsString } from 'class-validator';
 import { BaseSearchDto } from '../../../common/dto/base-search.dto.js';
 
 export class SearchCategoriaRequestDto extends BaseSearchDto {
-  @ApiPropertyOptional({ description: 'Filtrar por ID', type: Number, example: 1 })
+  @ApiPropertyOptional({ description: 'Filtrar por ID', type: Number })
   @Type(() => Number)
   @IsOptional()
   @IsNumber()
@@ -13,7 +13,6 @@ export class SearchCategoriaRequestDto extends BaseSearchDto {
   @ApiPropertyOptional({
     description: 'Filtrar por nombre (parcial, case-insensitive)',
     type: String,
-    example: 'Bebidas',
   })
   @IsOptional()
   @IsString()

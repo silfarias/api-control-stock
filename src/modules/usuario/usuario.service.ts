@@ -31,6 +31,12 @@ export class UsuarioService {
     return this.usuarioMapper.entity2DTO(usuario);
   }
 
+  async findByEmail(email: string): Promise<UsuarioDTO | null> {
+    const usuario = await this.usuarioRepository.findByEmail(email);
+    if (!usuario) return null;
+    return this.usuarioMapper.entity2DTO(usuario);
+  }
+
   async login(email: string, password: string): Promise<UsuarioDTO> {
     const usuario = await this.usuarioRepository.findOne({
       where: { email: email.toLowerCase().trim() },

@@ -1,114 +1,155 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# API Control de Stock
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API REST para gestión de stock, compras, ventas y caja de un negocio minorista (ropa deportiva, etc.).
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Stack: **NestJS 12 (ESM)** · **TypeORM** · **MySQL 9.7** · **JWT** · **Swagger** · **Yarn 4**
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Qué incluye (MVP)
 
-## Project setup
+| Módulo | Responsabilidad |
+|--------|-----------------|
+| **Auth / Usuario** | Login, refresh, signup (empleado), seed admin, roles `ADMIN` / `EMPLEADO` |
+| **Categoría / Producto** | Catálogo; producto con stock inicial opcional y alta en lote (`/producto/bulk`) |
+| **Inventario** | Única fuente de verdad del stock (movimientos inmutables: compra, venta, ajustes) |
+| **Proveedor / Compra** | Compras en borrador → confirmar (entra stock) o cancelar |
+| **Venta** | Venta confirmada; precios desde producto; descuenta stock |
+| **Caja** | Apertura/cierre; ventas en efectivo requieren caja abierta |
+| **Reporte** | Ventas, diario, top productos, stock bajo, valorización de inventario |
+| **Health** | `GET /health` (DB) |
 
-```bash
-$ yarn install
+### Flujo operativo
+
+```
+Categorías → Productos (stock 0 o inicial)
+                ↓
+Proveedores → Compras (confirmar) → ↑ STOCK
+                ↓
+         Abrir caja → Ventas → Cerrar caja
+                ↓
+             Reportes
 ```
 
-## Compile and run the project
+Regla clave: **solo `InventarioService` modifica stock**. Compra/venta/ajustes delegan ahí.
+
+---
+
+## Requisitos
+
+- Node.js 22+
+- Yarn 4
+- Docker (MySQL)
+
+---
+
+## Arranque rápido
 
 ```bash
-# development
-$ yarn run start
+# 1. Dependencias
+yarn install
 
-# watch mode
-$ yarn run start:dev
+# 2. Variables de entorno
+cp .env.example .env
+# Completar DB_* y JWT secrets (mín. 16 chars)
 
-# production mode
-$ yarn run start:prod
+# 3. Base de datos
+docker compose up -d
+
+# 4. API
+yarn start:dev
+
+# 5. Admin inicial (con SEED_ADMIN_ENABLED=true)
+yarn seed:admin
 ```
 
-## Run tests
+- API: http://localhost:3000  
+- Swagger: http://localhost:3000/api  
+- Health: http://localhost:3000/health  
+
+---
+
+## Scripts
+
+| Comando | Descripción |
+|---------|-------------|
+| `yarn start:dev` | Desarrollo con watch |
+| `yarn build` / `yarn start:prod` | Build y producción |
+| `yarn seed:admin` | Crea/autentica admin (`POST /auth/seed-admin`) |
+| `yarn lint` | Oxlint |
+| `yarn test` / `yarn test:e2e` | Tests |
+
+---
+
+## Auth
+
+1. `POST /auth/login` → `access_token` + `refresh_token`  
+2. Header: `Authorization: Bearer <access_token>`  
+3. Endpoints de escritura sensibles: **JWT + ADMIN**
+
+Seed admin (solo si `SEED_ADMIN_ENABLED=true`):
 
 ```bash
-# unit tests
-$ yarn run test
-
-# e2e tests
-$ yarn run test:e2e
-
-# test coverage
-$ yarn run test:cov
+yarn seed:admin
+# o POST /auth/seed-admin
 ```
 
-## Deployment
+En producción: `SEED_ADMIN_ENABLED=false`.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+---
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Módulos y endpoints principales
 
-```bash
-$ yarn install -g @nestjs/mau
-$ mau deploy
+| Prefijo | Notas |
+|---------|--------|
+| `/auth` | login, signup, me, refresh, change-password, seed-admin |
+| `/usuario` | CRUD (admin) |
+| `/categoria` | CRUD |
+| `/producto` | CRUD + `POST /bulk` + stock opcional en create |
+| `/inventario` | stock, movimientos, ajustes |
+| `/proveedor` | CRUD |
+| `/compra` | borrador → confirmar / cancelar |
+| `/venta` | alta (descuenta stock; efectivo → caja) |
+| `/caja` | abrir, cerrar, movimientos |
+| `/reporte` | ventas, diario, productos-top, stock-bajo, inventario |
+
+Detalle y schemas: Swagger en `/api`.
+
+---
+
+## Arquitectura
+
+```
+Controller → Service → Repository + Mapper
+                ↓
+         InventarioService (stock)
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+- Entidades con `BaseEntity` (id, created/updated/deleted)  
+- Soft-delete en bajas  
+- Errores tipados en `src/common/errors/errors-codes.ts`  
+- Convenciones en `rules/*.mdc`  
 
-## Observability
+---
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+## Variables de entorno
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+Ver `.env.example`:
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+- `DB_*` — MySQL  
+- `ACCESS_TOKEN_*` — JWT  
+- `SEED_ADMIN_*` — bootstrap admin  
+- `THROTTLE_*` — rate limit (opcional)  
+- `DB_TIMEZONE` — default `-03:00`  
 
-## Resources
+---
 
-Check out a few resources that may come in handy when working with NestJS:
+## Fuera de alcance (a propósito)
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+Sucursales, transferencias, facturación electrónica, lotes/vencimientos, promociones, clientes/CRM, cuentas corrientes, devoluciones complejas, permisos granulares.
 
-## Support
+---
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+## Licencia
 
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Privado / UNLICENSED.

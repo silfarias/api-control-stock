@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  Request,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -28,7 +29,9 @@ import { PaginatedResponse } from '../../common/decorators/paginated-response.de
 import { PageDto } from '../../common/dto/page.dto.js';
 import { AdminGuard } from '../../common/guards/admin.guard.js';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
+import { RequestUser } from '../../common/interfaces/jwt.interface.js';
 import { CreateProductoRequestDto } from './dto/create-producto-request.dto.js';
+import { CreateProductosBulkRequestDto } from './dto/create-productos-bulk-request.dto.js';
 import { ProductoDTO } from './dto/producto.dto.js';
 import { SearchProductoRequestDto } from './dto/search-producto-request.dto.js';
 import { UpdateProductoRequestDto } from './dto/update-producto-request.dto.js';
@@ -56,12 +59,40 @@ export class ProductoController {
     return this.productoService.search(req);
   }
 
+  @Post('bulk')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth('authorization')
+  @ApiOperation({
+    summary: 'Crear productos en lote',
+    description:
+      'Crea hasta 100 productos en una transacción. Cada ítem admite stock inicial opcional (solo ADMIN).',
+  })
+  @ApiBody({ type: CreateProductosBulkRequestDto })
+  @ApiOkResponse({
+    type: [ProductoDTO],
+    description: 'Productos creados correctamente',
+  })
+  @ApiBadRequestResponse({
+    description: 'Validación fallida / códigos duplicados en el lote',
+  })
+  @ApiConflictResponse({ description: 'Código o código de barras duplicado' })
+  @ApiNotFoundResponse({ description: 'Categoría no encontrada' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
+  async createBulk(
+    @Request() req: { user: RequestUser },
+    @Body() request: CreateProductosBulkRequestDto,
+  ): Promise<ProductoDTO[]> {
+    return this.productoService.createBulk(request, req.user);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Crear producto',
-    description: 'Crea un producto asociado a una categoría (solo ADMIN).',
+    description:
+      'Crea un producto asociado a una categoría. Stock inicial opcional vía `stock.cantidad` (solo ADMIN).',
   })
   @ApiBody({
     type: CreateProductoRequestDto,
@@ -74,9 +105,10 @@ export class ProductoController {
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async create(
+    @Request() req: { user: RequestUser },
     @Body() request: CreateProductoRequestDto,
   ): Promise<ProductoDTO> {
-    return this.productoService.create(request);
+    return this.productoService.create(request, req.user);
   }
 
   @Patch(':id')
