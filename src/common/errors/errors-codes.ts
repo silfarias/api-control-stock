@@ -112,6 +112,11 @@ export const ERRORS = {
       MESSAGE:
         'La contraseña es débil y no cumple con los requisitos mínimos de seguridad.',
     },
+    CANNOT_REMOVE_LAST_ADMIN: {
+      CODE: 'US04',
+      MESSAGE:
+        'No se puede eliminar ni degradar el último administrador activo del sistema.',
+    },
   },
 
   ENTITY: {

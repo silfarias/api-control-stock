@@ -42,13 +42,17 @@ export class UsuarioController {
   constructor(private readonly usuarioService: UsuarioService) {}
 
   @Get('search')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Buscar usuarios',
     description:
-      'Busca usuarios con filtros opcionales (id, nombre, email, role), texto libre `q` y paginación.',
+      'Busca usuarios con filtros opcionales (id, nombre, email, role), texto libre `q` y paginación. Solo ADMIN.',
   })
   @PaginatedResponse(UsuarioDTO)
   @ApiBadRequestResponse({ description: 'Solicitud incorrecta / parámetros inválidos' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async search(
     @Query() request: SearchUsuarioRequestDto,
   ): Promise<PageDto<UsuarioDTO>> {
@@ -78,7 +82,8 @@ export class UsuarioController {
   @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Actualizar usuario',
-    description: 'Actualiza parcialmente un usuario existente (solo ADMIN).',
+    description:
+      'Actualiza parcialmente un usuario existente (solo ADMIN). No permite degradar el último ADMIN.',
   })
   @ApiParam({ name: 'id', required: true, description: 'ID del usuario', example: 1 })
   @ApiBody({ type: UpdateUsuarioRequestDto, description: 'Campos a actualizar' })
@@ -87,7 +92,9 @@ export class UsuarioController {
   @ApiNotFoundResponse({ description: 'No se encontró el usuario' })
   @ApiConflictResponse({ description: 'Email duplicado' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
-  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
+  @ApiForbiddenResponse({
+    description: 'Se requiere rol ADMIN / no se puede degradar el último ADMIN',
+  })
   async update(
     @Request() req: { user: RequestUser },
     @Param('id', ParseIntPipe) id: number,
@@ -97,14 +104,19 @@ export class UsuarioController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Obtener usuario por ID',
-    description: 'Devuelve un usuario por su identificador. No incluye password.',
+    description:
+      'Devuelve un usuario por su identificador. No incluye password. Solo ADMIN.',
   })
   @ApiParam({ name: 'id', required: true, description: 'ID del usuario', example: 1 })
   @ApiOkResponse({ type: UsuarioDTO, description: 'Usuario encontrado' })
   @ApiBadRequestResponse({ description: 'Solicitud incorrecta' })
   @ApiNotFoundResponse({ description: 'No se encontró el usuario' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async findOne(@Param('id', ParseIntPipe) id: number): Promise<UsuarioDTO> {
     return this.usuarioService.findOne(id);
   }
@@ -115,14 +127,16 @@ export class UsuarioController {
   @ApiOperation({
     summary: 'Eliminar usuario',
     description:
-      'Soft-delete del usuario (solo ADMIN). Renombra el email para liberar la restricción unique.',
+      'Soft-delete del usuario (solo ADMIN). Renombra el email para liberar unique. No permite eliminar el último ADMIN.',
   })
   @ApiParam({ name: 'id', required: true, description: 'ID del usuario', example: 1 })
   @ApiOkResponse({ description: 'Usuario eliminado correctamente' })
   @ApiBadRequestResponse({ description: 'Solicitud incorrecta' })
   @ApiNotFoundResponse({ description: 'No se encontró el usuario' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
-  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
+  @ApiForbiddenResponse({
+    description: 'Se requiere rol ADMIN / no se puede eliminar el último ADMIN',
+  })
   async remove(
     @Request() req: { user: RequestUser },
     @Param('id', ParseIntPipe) id: number,

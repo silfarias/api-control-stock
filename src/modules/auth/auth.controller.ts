@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
+  HttpCode,
+  HttpStatus,
   Patch,
   Post,
   Request,
@@ -11,8 +14,6 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
-  ApiConflictResponse,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
@@ -20,6 +21,7 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { ERRORS } from '../../common/errors/errors-codes.js';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 import { UsuarioDTO } from '../usuario/dto/usuario.dto.js';
 import { AuthService } from './auth.service.js';
@@ -40,20 +42,27 @@ export class AuthController {
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('signup')
+  @HttpCode(HttpStatus.FORBIDDEN)
   @ApiOperation({
-    summary: 'Registrar nuevo usuario',
+    summary: 'Registro público (deshabilitado)',
+    deprecated: true,
     description:
-      'Registra un usuario con rol EMPLEADO y devuelve access_token + refresh_token.',
+      'Deshabilitado por seguridad. Los usuarios se crean únicamente vía POST /usuario (ADMIN).',
   })
-  @ApiBody({ type: SignupRequestDto, description: 'Datos del nuevo usuario' })
-  @ApiCreatedResponse({
-    type: SignupResponseDto,
-    description: 'Usuario registrado y autenticado',
+  @ApiBody({ type: SignupRequestDto, required: false })
+  @ApiForbiddenResponse({
+    description:
+      'Registro público deshabilitado. Usar POST /usuario con rol ADMIN.',
   })
-  @ApiBadRequestResponse({ description: 'Datos inválidos' })
-  @ApiConflictResponse({ description: 'Email ya registrado' })
-  async signup(@Body() body: SignupRequestDto): Promise<SignupResponseDto> {
-    return this.authService.signup(body);
+  async signup(
+    // Body opcional: se ignora; se mantiene el DTO para no romper clientes que aún postean.
+    @Body() _body?: SignupRequestDto,
+  ): Promise<SignupResponseDto> {
+    throw new ForbiddenException({
+      code: ERRORS.AUTHORIZATION.FORBIDDEN.CODE,
+      message:
+        'El registro público está deshabilitado. Los usuarios se crean desde POST /usuario (solo ADMIN).',
+    });
   }
 
   @UseGuards(ThrottlerGuard)

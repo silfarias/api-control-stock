@@ -39,9 +39,15 @@ export class ProveedorController {
   constructor(private readonly proveedorService: ProveedorService) {}
 
   @Get('search')
-  @ApiOperation({ summary: 'Buscar proveedores' })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
+  @ApiOperation({
+    summary: 'Buscar proveedores',
+    description: 'Requiere autenticación (ADMIN o EMPLEADO).',
+  })
   @PaginatedResponse(ProveedorDTO)
   @ApiBadRequestResponse({ description: 'Parámetros inválidos' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async search(
     @Query() request: SearchProveedorRequestDto,
   ): Promise<PageDto<ProveedorDTO>> {
@@ -82,10 +88,16 @@ export class ProveedorController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Obtener proveedor por ID' })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
+  @ApiOperation({
+    summary: 'Obtener proveedor por ID',
+    description: 'Requiere autenticación (ADMIN o EMPLEADO).',
+  })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({ type: ProveedorDTO })
   @ApiNotFoundResponse({ description: 'No encontrado' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async findOne(@Param('id', ParseIntPipe) id: number): Promise<ProveedorDTO> {
     return this.proveedorService.findOne(id);
   }

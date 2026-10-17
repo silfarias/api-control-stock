@@ -39,15 +39,18 @@ export class CategoriaController {
   constructor(private readonly categoriaService: CategoriaService) {}
 
   @Get('search')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Buscar categorías',
     description:
-      'Busca categorías con filtros opcionales (id, nombre), texto libre `q` y paginación.',
+      'Busca categorías con filtros opcionales (id, nombre), texto libre `q` y paginación. Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @PaginatedResponse(CategoriaDTO)
   @ApiBadRequestResponse({
     description: 'Solicitud incorrecta / parámetros inválidos',
   })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async search(
     @Query() request: SearchCategoriaRequestDto,
   ): Promise<PageDto<CategoriaDTO>> {
@@ -107,14 +110,18 @@ export class CategoriaController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Obtener categoría por ID',
-    description: 'Devuelve una categoría por su identificador.',
+    description:
+      'Devuelve una categoría por su identificador. Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @ApiParam({ name: 'id', required: true, description: 'ID de la categoría', example: 1 })
   @ApiOkResponse({ type: CategoriaDTO, description: 'Categoría encontrada' })
   @ApiBadRequestResponse({ description: 'Solicitud incorrecta' })
   @ApiNotFoundResponse({ description: 'No se encontró la categoría' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async findOne(@Param('id', ParseIntPipe) id: number): Promise<CategoriaDTO> {
     return this.categoriaService.findOne(id);
   }

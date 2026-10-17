@@ -41,12 +41,16 @@ export class InventarioController {
   constructor(private readonly inventarioService: InventarioService) {}
 
   @Get('search')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Buscar stocks',
-    description: 'Lista paginada de stock por producto.',
+    description:
+      'Lista paginada de stock por producto. Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @PaginatedResponse(StockDTO)
   @ApiBadRequestResponse({ description: 'Parámetros inválidos' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async search(
     @Query() request: SearchStockRequestDto,
   ): Promise<PageDto<StockDTO>> {
@@ -55,13 +59,16 @@ export class InventarioController {
   }
 
   @Get('movimientos/search')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Buscar movimientos de stock',
     description:
-      'Lista paginada de movimientos (historial inmutable). Filtros: productoId, tipo, usuarioId, q.',
+      'Lista paginada de movimientos (historial inmutable). Filtros: productoId, tipo, usuarioId, q. Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @PaginatedResponse(MovimientoStockDTO)
   @ApiBadRequestResponse({ description: 'Parámetros inválidos' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async searchMovimientos(
     @Query() request: SearchMovimientoStockRequestDto,
   ): Promise<PageDto<MovimientoStockDTO>> {
@@ -70,13 +77,17 @@ export class InventarioController {
   }
 
   @Get('producto/:productoId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Obtener stock por producto',
-    description: 'Devuelve el stock actual de un producto.',
+    description:
+      'Devuelve el stock actual de un producto. Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @ApiParam({ name: 'productoId', description: 'ID del producto', example: 1 })
   @ApiOkResponse({ type: StockDTO, description: 'Stock encontrado' })
   @ApiNotFoundResponse({ description: 'Producto o stock no encontrado' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async findByProducto(
     @Param('productoId', ParseIntPipe) productoId: number,
   ): Promise<StockDTO> {
@@ -84,14 +95,18 @@ export class InventarioController {
   }
 
   @Get('producto/:productoId/movimientos')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Movimientos de un producto',
-    description: 'Historial de movimientos de stock de un producto.',
+    description:
+      'Historial de movimientos de stock de un producto. Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @ApiParam({ name: 'productoId', description: 'ID del producto', example: 1 })
   @PaginatedResponse(MovimientoStockDTO)
   @ApiNotFoundResponse({ description: 'Producto no encontrado' })
   @ApiBadRequestResponse({ description: 'Parámetros inválidos' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async movimientosByProducto(
     @Param('productoId', ParseIntPipe) productoId: number,
     @Query() request: SearchMovimientoStockRequestDto,

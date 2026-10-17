@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { EntityManager } from 'typeorm';
 import { PageDto } from '../../common/dto/page.dto.js';
+import { UsuarioRole } from '../../common/enums/usuario-role.enum.js';
 import { ERRORS } from '../../common/errors/errors-codes.js';
 import { ErrorHandlerService } from '../../common/services/error-handler.service.js';
 import { GetEntityService } from '../../common/services/get-entity.service.js';
@@ -92,13 +94,36 @@ export class UsuarioService {
     _actor: ActorContext = {},
   ): Promise<UsuarioDTO> {
     try {
-      const usuario = await this.getEntity.findById(Usuario, id);
-      const updated = await this.usuarioMapper.updateDTO2Entity(
-        usuario,
-        request,
-      );
-      await this.usuarioRepository.save(updated);
-      return this.usuarioMapper.entity2DTO(updated);
+      return await this.usuarioRepository.manager.transaction(async (manager) => {
+        const repo = manager.getRepository(Usuario);
+        const usuario = await repo
+          .createQueryBuilder('usuario')
+          .setLock('pessimistic_write')
+          .where('usuario.id = :id', { id })
+          .getOne();
+
+        if (!usuario) {
+          this.errorHandler.throwNotFound(ERRORS.DATABASE.RECORD_NOT_FOUND, {
+            id,
+          });
+        }
+
+        const degradarUltimoAdmin =
+          usuario.role === UsuarioRole.ADMIN &&
+          request.role !== undefined &&
+          request.role !== UsuarioRole.ADMIN;
+
+        if (degradarUltimoAdmin) {
+          await this.ensureNotLastAdmin(manager);
+        }
+
+        const updated = await this.usuarioMapper.updateDTO2Entity(
+          usuario,
+          request,
+        );
+        const saved = await repo.save(updated);
+        return this.usuarioMapper.entity2DTO(saved);
+      });
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);
@@ -109,12 +134,22 @@ export class UsuarioService {
     try {
       await this.usuarioRepository.manager.transaction(async (manager) => {
         const repo = manager.getRepository(Usuario);
-        const usuario = await repo.findOne({ where: { id } });
+        const usuario = await repo
+          .createQueryBuilder('usuario')
+          .setLock('pessimistic_write')
+          .where('usuario.id = :id', { id })
+          .getOne();
+
         if (!usuario) {
           this.errorHandler.throwNotFound(ERRORS.DATABASE.RECORD_NOT_FOUND, {
             id,
           });
         }
+
+        if (usuario.role === UsuarioRole.ADMIN) {
+          await this.ensureNotLastAdmin(manager);
+        }
+
         // Libera unique de email al soft-delete (respeta length de columna)
         usuario.email = renameOnDelete(usuario.email).slice(0, 180);
         await repo.save(usuario);
@@ -124,6 +159,23 @@ export class UsuarioService {
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);
+    }
+  }
+
+  /**
+   * Bloquea filas ADMIN (FOR UPDATE) y aborta si solo queda uno.
+   * Serializa degradaciones/eliminaciones concurrentes del último admin.
+   */
+  private async ensureNotLastAdmin(manager: EntityManager): Promise<void> {
+    const repo = manager.getRepository(Usuario);
+    const admins = await repo
+      .createQueryBuilder('usuario')
+      .setLock('pessimistic_write')
+      .where('usuario.role = :role', { role: UsuarioRole.ADMIN })
+      .getMany();
+
+    if (admins.length <= 1) {
+      this.errorHandler.throwForbidden(ERRORS.USER.CANNOT_REMOVE_LAST_ADMIN);
     }
   }
 }

@@ -43,15 +43,18 @@ export class ProductoController {
   constructor(private readonly productoService: ProductoService) {}
 
   @Get('search')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Buscar productos',
     description:
-      'Busca productos con filtros (id, nombre, codigo, codigoBarras, categoriaId), texto libre `q` y paginación.',
+      'Busca productos con filtros (id, nombre, codigo, codigoBarras, categoriaId), texto libre `q` y paginación. Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @PaginatedResponse(ProductoDTO)
   @ApiBadRequestResponse({
     description: 'Solicitud incorrecta / parámetros inválidos',
   })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async search(
     @Query() request: SearchProductoRequestDto,
   ): Promise<PageDto<ProductoDTO>> {
@@ -137,14 +140,18 @@ export class ProductoController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Obtener producto por ID',
-    description: 'Devuelve un producto con su categoría.',
+    description:
+      'Devuelve un producto con su categoría. Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @ApiParam({ name: 'id', required: true, description: 'ID del producto', example: 1 })
   @ApiOkResponse({ type: ProductoDTO, description: 'Producto encontrado' })
   @ApiBadRequestResponse({ description: 'Solicitud incorrecta' })
   @ApiNotFoundResponse({ description: 'No se encontró el producto' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async findOne(@Param('id', ParseIntPipe) id: number): Promise<ProductoDTO> {
     return this.productoService.findOne(id);
   }
