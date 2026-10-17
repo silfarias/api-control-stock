@@ -78,12 +78,12 @@ export class UsuarioController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard, AdminGuard)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Actualizar usuario',
     description:
-      'Actualiza parcialmente un usuario existente (solo ADMIN). No permite degradar el último ADMIN.',
+      'ADMIN puede actualizar cualquier usuario (incl. rol). EMPLEADO solo el propio (nombre, email, password; no puede cambiar role). No permite degradar el último ADMIN.',
   })
   @ApiParam({ name: 'id', required: true, description: 'ID del usuario', example: 1 })
   @ApiBody({ type: UpdateUsuarioRequestDto, description: 'Campos a actualizar' })
@@ -93,7 +93,8 @@ export class UsuarioController {
   @ApiConflictResponse({ description: 'Email duplicado' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   @ApiForbiddenResponse({
-    description: 'Se requiere rol ADMIN / no se puede degradar el último ADMIN',
+    description:
+      'Sin permiso (otro usuario / cambio de role) o no se puede degradar el último ADMIN',
   })
   async update(
     @Request() req: { user: RequestUser },

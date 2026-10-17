@@ -20,18 +20,19 @@ import { ReporteService } from './reporte.service.js';
 
 @ApiTags('Reporte')
 @Controller('reporte')
-@UseGuards(JwtAuthGuard, AdminGuard)
+@UseGuards(JwtAuthGuard)
 @ApiBearerAuth('authorization')
 @ApiUnauthorizedResponse({ description: 'No autorizado' })
-@ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
 export class ReporteController {
   constructor(private readonly reporteService: ReporteService) {}
 
   @Get('ventas')
+  @UseGuards(AdminGuard)
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   @ApiOperation({
     summary: 'Resumen de ventas',
     description:
-      'Totales de ventas confirmadas: cantidad, ingresos, unidades y ticket promedio.',
+      'Totales de ventas confirmadas: cantidad, ingresos, unidades y ticket promedio. Solo ADMIN.',
   })
   @ApiOkResponse({ type: ReporteVentasResponseDto })
   async ventas(
@@ -42,9 +43,12 @@ export class ReporteController {
   }
 
   @Get('ventas/diario')
+  @UseGuards(AdminGuard)
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   @ApiOperation({
     summary: 'Ventas por día',
-    description: 'Cantidad e ingresos agrupados por día en el rango filtrado.',
+    description:
+      'Cantidad e ingresos agrupados por día en el rango filtrado. Solo ADMIN.',
   })
   @ApiOkResponse({ type: [ReporteVentasDiarioItemDto] })
   async ventasDiario(
@@ -55,9 +59,12 @@ export class ReporteController {
   }
 
   @Get('productos-top')
+  @UseGuards(AdminGuard)
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   @ApiOperation({
     summary: 'Productos más vendidos',
-    description: 'Ranking por unidades vendidas (límite configurable).',
+    description:
+      'Ranking por unidades vendidas (límite configurable). Solo ADMIN.',
   })
   @ApiOkResponse({ type: [ReporteProductoTopItemDto] })
   async productosTop(
@@ -70,7 +77,8 @@ export class ReporteController {
   @Get('stock-bajo')
   @ApiOperation({
     summary: 'Stock bajo',
-    description: 'Productos con cantidad menor o igual al mínimo configurado.',
+    description:
+      'Productos con cantidad menor o igual al mínimo configurado. Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @ApiOkResponse({ type: [ReporteStockBajoItemDto] })
   async stockBajo(
@@ -81,9 +89,12 @@ export class ReporteController {
   }
 
   @Get('inventario')
+  @UseGuards(AdminGuard)
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   @ApiOperation({
     summary: 'Valorización de inventario',
-    description: 'Stock actual valorizado a costo y a precio de venta.',
+    description:
+      'Stock actual valorizado a costo y a precio de venta. Solo ADMIN.',
   })
   @ApiOkResponse({ type: ReporteInventarioResponseDto })
   async inventario(

@@ -3,6 +3,7 @@ import { EntityManager } from 'typeorm';
 import { PageDto } from '../../common/dto/page.dto.js';
 import { UsuarioRole } from '../../common/enums/usuario-role.enum.js';
 import { ERRORS } from '../../common/errors/errors-codes.js';
+import { RequestUser } from '../../common/interfaces/jwt.interface.js';
 import { ErrorHandlerService } from '../../common/services/error-handler.service.js';
 import { GetEntityService } from '../../common/services/get-entity.service.js';
 import { PasswordHelper } from '../../common/utils/password-helper.js';
@@ -14,8 +15,6 @@ import { UsuarioDTO } from './dto/usuario.dto.js';
 import { Usuario } from './entities/usuario.entity.js';
 import { UsuarioMapper } from './mappers/usuario.mapper.js';
 import { UsuarioRepository } from './repository/usuario.repository.js';
-
-type ActorContext = { id?: number };
 
 @Injectable()
 export class UsuarioService {
@@ -91,9 +90,26 @@ export class UsuarioService {
   async update(
     id: number,
     request: UpdateUsuarioRequestDto,
-    _actor: ActorContext = {},
+    actor: RequestUser,
   ): Promise<UsuarioDTO> {
     try {
+      const esAdmin = actor.role === UsuarioRole.ADMIN;
+      const esPropio = actor.id === id;
+
+      if (!esAdmin && !esPropio) {
+        this.errorHandler.throwForbidden(
+          ERRORS.AUTHORIZATION.INSUFFICIENT_PERMISSIONS,
+          { details: 'Solo podés actualizar tu propio usuario' },
+        );
+      }
+
+      if (!esAdmin && request.role !== undefined) {
+        this.errorHandler.throwForbidden(
+          ERRORS.AUTHORIZATION.INSUFFICIENT_PERMISSIONS,
+          { details: 'No podés cambiar el rol de usuario' },
+        );
+      }
+
       return await this.usuarioRepository.manager.transaction(async (manager) => {
         const repo = manager.getRepository(Usuario);
         const usuario = await repo
@@ -109,6 +125,7 @@ export class UsuarioService {
         }
 
         const degradarUltimoAdmin =
+          esAdmin &&
           usuario.role === UsuarioRole.ADMIN &&
           request.role !== undefined &&
           request.role !== UsuarioRole.ADMIN;
@@ -130,7 +147,7 @@ export class UsuarioService {
     }
   }
 
-  async remove(id: number, _actor: ActorContext = {}): Promise<string> {
+  async remove(id: number, _actor: { id?: number } = {}): Promise<string> {
     try {
       await this.usuarioRepository.manager.transaction(async (manager) => {
         const repo = manager.getRepository(Usuario);
