@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PageDto } from '../../common/dto/page.dto.js';
 import { EstadoCompra } from '../../common/enums/estado-compra.enum.js';
 import { ERRORS } from '../../common/errors/errors-codes.js';
@@ -19,7 +19,7 @@ import { CompraMapper } from './mappers/compra.mapper.js';
 import { CompraRepository } from './repository/compra.repository.js';
 
 @Injectable()
-export class CompraService {
+export class CompraService implements OnModuleInit {
   constructor(
     private readonly compraRepository: CompraRepository,
     private readonly compraMapper: CompraMapper,
@@ -27,6 +27,10 @@ export class CompraService {
     private readonly getEntity: GetEntityService,
     private readonly errorHandler: ErrorHandlerService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.compraRepository.syncNumeracion();
+  }
 
   async findOne(id: number): Promise<CompraDTO> {
     const compra = await this.compraRepository.findByIdWithRelations(id);
@@ -49,9 +53,15 @@ export class CompraService {
       await this.validarProveedorActivo(request.proveedorId);
       await this.validarProductos(request.items);
 
-      const entity = this.compraMapper.createDTO2Entity(request, actor.id);
-      const saved = await this.compraRepository.save(entity);
-      return this.findOne(saved.id);
+      const savedId = await this.compraRepository.manager.transaction(
+        async (manager) => {
+          const compra = this.compraMapper.createDTO2Entity(request, actor.id);
+          compra.numero = await this.compraRepository.allocateNumero(manager);
+          const saved = await manager.getRepository(Compra).save(compra);
+          return saved.id;
+        },
+      );
+      return this.findOne(savedId);
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);
@@ -155,7 +165,7 @@ export class CompraService {
               cantidad: item.cantidad,
               compraId: compra.id,
               usuarioId: actor.id,
-              motivo: `Compra #${compra.id} — producto ${item.producto.id}`,
+              motivo: `Compra #${compra.numero} — producto ${item.producto.id}`,
             },
             manager,
           );

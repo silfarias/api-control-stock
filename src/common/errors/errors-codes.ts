@@ -168,6 +168,17 @@ export const ERRORS = {
       CODE: 'VE02',
       MESSAGE: 'El estado de la venta no permite esta operación.',
     },
+    YA_CANCELADA: {
+      CODE: 'VE03',
+      MESSAGE: 'La venta ya está cancelada.',
+    },
+  },
+
+  TICKET: {
+    PAPER_MM: {
+      CODE: 'TK01',
+      MESSAGE: 'El ancho de papel debe ser 48, 58, 80 o 90 mm.',
+    },
   },
 
   CAJA: {

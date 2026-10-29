@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PageDto } from '../../common/dto/page.dto.js';
+import { EstadoVenta } from '../../common/enums/estado-venta.enum.js';
 import { MetodoPago } from '../../common/enums/metodo-pago.enum.js';
 import { ERRORS } from '../../common/errors/errors-codes.js';
 import { RequestUser } from '../../common/interfaces/jwt.interface.js';
@@ -16,7 +17,7 @@ import { ItemVentaConPrecio, VentaMapper } from './mappers/venta.mapper.js';
 import { VentaRepository } from './repository/venta.repository.js';
 
 @Injectable()
-export class VentaService {
+export class VentaService implements OnModuleInit {
   constructor(
     private readonly ventaRepository: VentaRepository,
     private readonly ventaMapper: VentaMapper,
@@ -25,6 +26,10 @@ export class VentaService {
     private readonly getEntity: GetEntityService,
     private readonly errorHandler: ErrorHandlerService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.ventaRepository.syncNumeracion();
+  }
 
   async findOne(id: number): Promise<VentaDTO> {
     const venta = await this.ventaRepository.findByIdWithRelations(id);
@@ -63,6 +68,7 @@ export class VentaService {
             actor.id,
             itemsConPrecio,
           );
+          venta.numero = await this.ventaRepository.allocateNumero(manager);
           const saved = await ventaRepo.save(venta);
 
           for (const item of itemsConPrecio) {
@@ -72,7 +78,7 @@ export class VentaService {
                 cantidad: item.cantidad,
                 ventaId: saved.id,
                 usuarioId: actor.id,
-                motivo: `Venta #${saved.id} — producto ${item.productoId}`,
+                motivo: `Venta #${saved.numero} — producto ${item.productoId}`,
               },
               manager,
             );
@@ -94,6 +100,80 @@ export class VentaService {
       );
 
       return this.findOne(savedId);
+    } catch (error) {
+      if (this.errorHandler.isHttpException(error)) throw error;
+      this.errorHandler.handleError(error);
+    }
+  }
+
+  /**
+   * Anula una venta confirmada: devuelve el stock y, si fue en efectivo,
+   * registra un egreso. El número de comprobante no se reutiliza.
+   */
+  async cancelar(id: number, actor: RequestUser): Promise<VentaDTO> {
+    try {
+      await this.ventaRepository.manager.transaction(async (manager) => {
+        const ventaRepo = manager.getRepository(Venta);
+        const venta = await ventaRepo
+          .createQueryBuilder('venta')
+          .setLock('pessimistic_write')
+          .leftJoinAndSelect('venta.items', 'items')
+          .leftJoinAndSelect('items.producto', 'producto')
+          .where('venta.id = :id', { id })
+          .getOne();
+
+        if (!venta) {
+          this.errorHandler.throwNotFound(ERRORS.DATABASE.RECORD_NOT_FOUND, {
+            id,
+          });
+        }
+
+        if (venta.estado === EstadoVenta.CANCELADA) {
+          this.errorHandler.throwBadRequest(ERRORS.VENTA.YA_CANCELADA, { id });
+        }
+
+        if (venta.estado !== EstadoVenta.CONFIRMADA) {
+          this.errorHandler.throwBadRequest(ERRORS.VENTA.ESTADO_INVALIDO, {
+            estado: venta.estado,
+          });
+        }
+
+        if (!venta.items?.length) {
+          this.errorHandler.throwBadRequest(ERRORS.VENTA.SIN_ITEMS, { id });
+        }
+
+        const etiqueta = venta.numero ?? venta.id;
+
+        for (const item of venta.items) {
+          await this.inventarioService.registrarEntradaPorAnulacionVenta(
+            {
+              productoId: item.producto.id,
+              cantidad: item.cantidad,
+              ventaId: venta.id,
+              usuarioId: actor.id,
+              motivo: `Anulación venta #${etiqueta} — producto ${item.producto.id}`,
+            },
+            manager,
+          );
+        }
+
+        if (venta.metodoPago === MetodoPago.EFECTIVO) {
+          await this.cajaService.registrarAnulacionEfectivo(
+            {
+              ventaId: venta.id,
+              numero: venta.numero,
+              monto: Number(venta.total),
+              usuarioId: actor.id,
+            },
+            manager,
+          );
+        }
+
+        venta.estado = EstadoVenta.CANCELADA;
+        await ventaRepo.save(venta);
+      });
+
+      return this.findOne(id);
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);

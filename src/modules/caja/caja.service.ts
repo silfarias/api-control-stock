@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { PageDto } from '../../common/dto/page.dto.js';
 import { EstadoCaja } from '../../common/enums/estado-caja.enum.js';
@@ -23,7 +23,7 @@ import { CajaRepository } from './repository/caja.repository.js';
 import { MovimientoCajaRepository } from './repository/movimiento-caja.repository.js';
 
 @Injectable()
-export class CajaService {
+export class CajaService implements OnModuleInit {
   constructor(
     private readonly cajaRepository: CajaRepository,
     private readonly movimientoCajaRepository: MovimientoCajaRepository,
@@ -31,6 +31,10 @@ export class CajaService {
     private readonly movimientoCajaMapper: MovimientoCajaMapper,
     private readonly errorHandler: ErrorHandlerService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.cajaRepository.syncNumeracion();
+  }
 
   async search(request: SearchCajaRequestDto): Promise<PageDto<CajaDTO>> {
     const page = await this.cajaRepository.search(request);
@@ -65,14 +69,19 @@ export class CajaService {
         });
       }
 
-      const caja = new Caja();
-      caja.usuario = Usuario.fromId(actor.id);
-      caja.montoApertura = request.montoApertura;
-      caja.abiertaEn = new Date();
-      caja.estado = EstadoCaja.ABIERTA;
-
-      const saved = await this.cajaRepository.save(caja);
-      return this.findOne(saved.id);
+      const savedId = await this.cajaRepository.manager.transaction(
+        async (manager) => {
+          const caja = new Caja();
+          caja.usuario = Usuario.fromId(actor.id);
+          caja.montoApertura = request.montoApertura;
+          caja.abiertaEn = new Date();
+          caja.estado = EstadoCaja.ABIERTA;
+          caja.numero = await this.cajaRepository.allocateNumero(manager);
+          const saved = await manager.getRepository(Caja).save(caja);
+          return saved.id;
+        },
+      );
+      return this.findOne(savedId);
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);
@@ -208,6 +217,68 @@ export class CajaService {
       tipo: TipoMovimientoCaja.VENTA,
       monto: params.monto,
       descripcion: `Venta #${params.ventaId}`,
+      referenciaId: params.ventaId,
+      usuario: Usuario.fromId(params.usuarioId),
+    });
+
+    return movimientoRepo.save(movimiento);
+  }
+
+  /**
+   * Egreso por anulación de una venta en efectivo.
+   * Si la caja que cobró sigue abierta, el egreso va ahí.
+   * Si ya cerró, va a la caja abierta actual y no se modifica el cierre anterior.
+   */
+  async registrarAnulacionEfectivo(
+    params: {
+      ventaId: number;
+      numero: number | null;
+      monto: number;
+      usuarioId: number;
+    },
+    manager: EntityManager,
+  ): Promise<MovimientoCaja> {
+    const cajaRepo = manager.getRepository(Caja);
+    const movimientoRepo = manager.getRepository(MovimientoCaja);
+
+    const movimientoVenta = await movimientoRepo.findOne({
+      where: {
+        referenciaId: params.ventaId,
+        tipo: TipoMovimientoCaja.VENTA,
+      },
+      relations: { caja: true },
+    });
+
+    if (!movimientoVenta?.caja) {
+      this.errorHandler.throwBadRequest(ERRORS.CAJA.NO_ABIERTA, {
+        mensaje: 'No se encontró el movimiento de caja de la venta en efectivo',
+      });
+    }
+
+    let cajaDestino = movimientoVenta.caja;
+    const cajaOriginalCerrada = cajaDestino.estado !== EstadoCaja.ABIERTA;
+
+    if (cajaOriginalCerrada) {
+      const abierta = await cajaRepo.findOne({
+        where: { estado: EstadoCaja.ABIERTA },
+      });
+      if (!abierta) {
+        this.errorHandler.throwBadRequest(ERRORS.CAJA.NO_ABIERTA, {
+          mensaje:
+            'La caja de la venta está cerrada y no hay otra caja abierta para registrar la anulación',
+        });
+      }
+      cajaDestino = abierta;
+    }
+
+    const etiqueta = params.numero ?? params.ventaId;
+    const movimiento = movimientoRepo.create({
+      caja: Caja.fromId(cajaDestino.id),
+      tipo: TipoMovimientoCaja.EGRESO,
+      monto: params.monto,
+      descripcion: cajaOriginalCerrada
+        ? `Anulación venta #${etiqueta} (la caja original ya estaba cerrada)`
+        : `Anulación venta #${etiqueta}`,
       referenciaId: params.ventaId,
       usuario: Usuario.fromId(params.usuarioId),
     });

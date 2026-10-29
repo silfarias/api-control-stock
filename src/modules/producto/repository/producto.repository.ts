@@ -30,15 +30,16 @@ export class ProductoRepository extends Repository<Producto> {
     }
 
     if (request.codigo) {
-      queryBuilder.andWhere('LOWER(producto.codigo) = LOWER(:codigo)', {
-        codigo: request.codigo,
+      queryBuilder.andWhere('LOWER(producto.codigo) LIKE LOWER(:codigo)', {
+        codigo: `%${request.codigo.trim()}%`,
       });
     }
 
     if (request.codigoBarras) {
-      queryBuilder.andWhere('producto.codigoBarras = :codigoBarras', {
-        codigoBarras: request.codigoBarras,
-      });
+      queryBuilder.andWhere(
+        'LOWER(producto.codigoBarras) LIKE LOWER(:codigoBarras)',
+        { codigoBarras: `%${request.codigoBarras.trim()}%` },
+      );
     }
 
     if (request.categoriaId) {

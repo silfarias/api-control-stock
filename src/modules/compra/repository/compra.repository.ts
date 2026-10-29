@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
+import { DataSource, EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
 import { PageDto } from '../../../common/dto/page.dto.js';
 import {
   applySearchQueryOptions,
@@ -25,6 +25,47 @@ export class CompraRepository extends Repository<Compra> {
 
   async findByIdWithRelations(id: number): Promise<Compra | null> {
     return this.baseQuery().where('compra.id = :id', { id }).getOne();
+  }
+
+  /**
+   * Alinea comprobantes ya cargados (numero = id) y deja el contador
+   * en el máximo existente. Idempotente.
+   */
+  async syncNumeracion(): Promise<void> {
+    await this.manager.query(`
+      INSERT INTO compra_numeracion (id, ultimo_numero)
+      VALUES (1, 0)
+      ON DUPLICATE KEY UPDATE id = id
+    `);
+    await this.manager.query(`
+      UPDATE compra SET numero = id WHERE numero IS NULL
+    `);
+    await this.manager.query(`
+      UPDATE compra_numeracion
+      SET ultimo_numero = (
+        SELECT COALESCE(MAX(numero), 0) FROM (SELECT numero FROM compra) AS existentes
+      )
+      WHERE id = 1
+    `);
+  }
+
+  /**
+   * Reserva el siguiente comprobante. El FOR UPDATE se sostiene
+   * hasta el commit de la transacción que llama.
+   */
+  async allocateNumero(manager: EntityManager): Promise<number> {
+    const rows: { ultimo: number | string }[] = await manager.query(
+      `SELECT ultimo_numero AS ultimo FROM compra_numeracion WHERE id = 1 FOR UPDATE`,
+    );
+    if (!rows.length) {
+      throw new Error('La numeración de compras no está inicializada');
+    }
+    const numero = Number(rows[0].ultimo) + 1;
+    await manager.query(
+      `UPDATE compra_numeracion SET ultimo_numero = ? WHERE id = 1`,
+      [numero],
+    );
+    return numero;
   }
 
   async search(request: SearchCompraRequestDto): Promise<PageDto<Compra>> {
@@ -53,6 +94,7 @@ export class CompraRepository extends Repository<Compra> {
     }
 
     applyTextSearch(queryBuilder, request.q, [
+      'CAST(compra.numero AS CHAR)',
       'proveedor.nombre',
       'producto.nombre',
       'producto.codigo',

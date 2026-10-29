@@ -15,6 +15,19 @@ export class Compra extends BaseEntity {
   @JoinColumn({ name: 'usuario_id' })
   usuario: Usuario;
 
+  /**
+   * Número de comprobante visible (1, 2, 3…). Independiente del id técnico.
+   * Nullable solo para poder agregar la columna sobre compras ya existentes;
+   * el alta siempre lo asigna y el arranque rellena los nulos con el id.
+   */
+  @Column({
+    type: 'int',
+    unsigned: true,
+    unique: true,
+    nullable: true,
+  })
+  numero: number | null;
+
   @Column({
     type: 'decimal',
     precision: 14,

@@ -48,7 +48,7 @@ export class ProductoController {
   @ApiOperation({
     summary: 'Buscar productos',
     description:
-      'Busca productos con filtros (id, nombre, codigo, codigoBarras, categoriaId), texto libre `q` y paginación. Requiere autenticación (ADMIN o EMPLEADO).',
+      'Busca productos con filtros (id, nombre, codigo, codigoBarras, categoriaId), texto libre `q` y paginación. `nombre`, `codigo`, `codigoBarras` y `q` coinciden por fragmento. Requiere autenticación (ADMIN o EMPLEADO).',
   })
   @PaginatedResponse(ProductoDTO)
   @ApiBadRequestResponse({

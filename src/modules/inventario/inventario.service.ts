@@ -218,6 +218,34 @@ export class InventarioService {
   }
 
   /**
+   * Devuelve al stock las unidades de una venta anulada.
+   * Debe ejecutarse dentro de la transacción de anulación.
+   */
+  async registrarEntradaPorAnulacionVenta(
+    params: {
+      productoId: number;
+      cantidad: number;
+      ventaId: number;
+      usuarioId: number;
+      motivo?: string;
+    },
+    manager: EntityManager,
+  ): Promise<{ stock: Stock; movimiento: MovimientoStock }> {
+    return this.aplicarMovimiento(
+      {
+        productoId: params.productoId,
+        tipo: TipoMovimientoStock.AJUSTE_ENTRADA,
+        cantidad: params.cantidad,
+        tipoReferencia: TipoReferenciaMovimiento.VENTA,
+        referenciaId: params.ventaId,
+        motivo: params.motivo ?? `Anulación venta #${params.ventaId}`,
+        usuarioId: params.usuarioId,
+      },
+      manager,
+    );
+  }
+
+  /**
    * Registra una salida por venta (tipo VENTA).
    * Debe ejecutarse dentro de la transacción de alta de venta.
    */

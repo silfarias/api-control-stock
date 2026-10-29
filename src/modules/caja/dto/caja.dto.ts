@@ -5,6 +5,15 @@ import { EstadoCaja } from '../../../common/enums/estado-caja.enum.js';
 import { UsuarioDTO } from '../../usuario/dto/usuario.dto.js';
 
 export class CajaDTO extends CommonDTO {
+  @ApiProperty({
+    description:
+      'Número de caja correlativo. Es el identificador visible; el id sigue siendo la clave técnica.',
+    type: Number,
+    example: 2,
+  })
+  @Expose()
+  numero: number;
+
   @ApiProperty({ description: 'Monto de apertura', type: Number, example: 20000 })
   @Expose()
   montoApertura: number;

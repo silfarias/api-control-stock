@@ -7,6 +7,15 @@ import { UsuarioDTO } from '../../usuario/dto/usuario.dto.js';
 import { ItemVentaDTO } from './item-venta.dto.js';
 
 export class VentaDTO extends CommonDTO {
+  @ApiProperty({
+    description:
+      'Número de comprobante correlativo. Es el identificador visible de la venta; el id sigue siendo la clave técnica.',
+    type: Number,
+    example: 7,
+  })
+  @Expose()
+  numero: number;
+
   @ApiProperty({ description: 'Total de la venta', type: Number, example: 750 })
   @Expose()
   total: number;

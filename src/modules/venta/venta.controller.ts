@@ -69,6 +69,28 @@ export class VentaController {
     return this.ventaService.create(body, req.user);
   }
 
+  @Post(':id/cancelar')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('authorization')
+  @ApiOperation({
+    summary: 'Anular venta confirmada',
+    description:
+      'Pasa la venta a CANCELADA, devuelve el stock y, si el pago fue en efectivo, registra un egreso. Si la caja que cobró sigue abierta, el egreso va a esa caja. Si ya cerró, va a la caja abierta actual. El número de comprobante no cambia. Requiere autenticación (ADMIN o EMPLEADO).',
+  })
+  @ApiParam({ name: 'id', example: 1, description: 'Id técnico de la venta' })
+  @ApiOkResponse({ type: VentaDTO, description: 'Venta anulada' })
+  @ApiBadRequestResponse({
+    description: 'Ya cancelada, estado inválido o sin caja abierta para el efectivo',
+  })
+  @ApiNotFoundResponse({ description: 'No encontrada' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async cancelar(
+    @Request() req: { user: RequestUser },
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<VentaDTO> {
+    return this.ventaService.cancelar(id, req.user);
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('authorization')

@@ -28,7 +28,7 @@ export class ReporteController {
   @ApiOperation({
     summary: 'Resumen de ventas',
     description:
-      'Totales de ventas confirmadas (cantidad, ingresos, unidades, ticket promedio) y desglose por método de pago. Requiere autenticación (ADMIN o EMPLEADO). Fechas `desde`/`hasta` inclusivas sobre created_date en zona horaria de la DB (DB_TIMEZONE, típ. -03:00).',
+      'Totales de ventas confirmadas (cantidad, ingresos, unidades, ticket promedio) y desglose por método de pago. Requiere autenticación (ADMIN o EMPLEADO). `fecha` filtra un día exacto y tiene prioridad sobre `desde`/`hasta`. Fechas inclusivas sobre created_date en zona horaria de la DB (DB_TIMEZONE, típ. -03:00).',
   })
   @ApiOkResponse({ type: ReporteVentasResponseDto })
   async ventas(
@@ -42,7 +42,7 @@ export class ReporteController {
   @ApiOperation({
     summary: 'Ventas por día',
     description:
-      'Cantidad e ingresos agrupados por día. Requiere autenticación (ADMIN o EMPLEADO).',
+      'Cantidad e ingresos agrupados por día. Requiere autenticación (ADMIN o EMPLEADO). Acepta `fecha` (día exacto) o el rango `desde`/`hasta`.',
   })
   @ApiOkResponse({ type: [ReporteVentasDiarioItemDto] })
   async ventasDiario(
@@ -56,7 +56,7 @@ export class ReporteController {
   @ApiOperation({
     summary: 'Productos más vendidos',
     description:
-      'Ranking por unidades vendidas (límite configurable). Requiere autenticación (ADMIN o EMPLEADO).',
+      'Ranking por unidades vendidas (límite configurable). Requiere autenticación (ADMIN o EMPLEADO). Acepta `fecha` (día exacto) o el rango `desde`/`hasta`.',
   })
   @ApiOkResponse({ type: [ReporteProductoTopItemDto] })
   async productosTop(

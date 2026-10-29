@@ -19,7 +19,7 @@ export class SearchProductoRequestDto extends BaseSearchDto {
   nombre?: string;
 
   @ApiPropertyOptional({
-    description: 'Filtrar por código interno',
+    description: 'Filtrar por código interno (parcial, sin distinguir mayúsculas)',
     type: String,
   })
   @IsOptional()
@@ -27,7 +27,8 @@ export class SearchProductoRequestDto extends BaseSearchDto {
   codigo?: string;
 
   @ApiPropertyOptional({
-    description: 'Filtrar por código de barras',
+    description:
+      'Filtrar por código de barras (parcial: alcanza con un fragmento del número)',
     type: String,
   })
   @IsOptional()

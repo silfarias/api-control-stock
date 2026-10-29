@@ -287,15 +287,25 @@ export class ReporteService {
     qb: SelectQueryBuilder<Venta> | SelectQueryBuilder<ItemVenta>,
     filtro: FiltroReporteDto,
   ): void {
-    if (filtro.desde) {
+    const fecha = filtro.fecha?.slice(0, 10);
+    if (fecha) {
       qb.andWhere('venta.created_date >= :desde', {
-        desde: `${filtro.desde} 00:00:00`,
+        desde: `${fecha} 00:00:00`,
       });
-    }
-    if (filtro.hasta) {
       qb.andWhere('venta.created_date <= :hasta', {
-        hasta: `${filtro.hasta} 23:59:59`,
+        hasta: `${fecha} 23:59:59`,
       });
+    } else {
+      if (filtro.desde) {
+        qb.andWhere('venta.created_date >= :desde', {
+          desde: `${filtro.desde} 00:00:00`,
+        });
+      }
+      if (filtro.hasta) {
+        qb.andWhere('venta.created_date <= :hasta', {
+          hasta: `${filtro.hasta} 23:59:59`,
+        });
+      }
     }
     if (filtro.usuarioId) {
       qb.andWhere('venta.usuario_id = :usuarioId', {

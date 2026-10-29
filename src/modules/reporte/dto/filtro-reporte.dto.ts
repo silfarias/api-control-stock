@@ -4,6 +4,15 @@ import { IsDateString, IsInt, IsOptional, Max, Min } from 'class-validator';
 
 export class FiltroReporteDto {
   @ApiPropertyOptional({
+    description:
+      'Día exacto (YYYY-MM-DD), inclusivo en la zona horaria de la DB. Si viene, tiene prioridad sobre desde y hasta.',
+    example: '2026-10-17',
+  })
+  @IsOptional()
+  @IsDateString()
+  fecha?: string;
+
+  @ApiPropertyOptional({
     description: 'Fecha desde (ISO: YYYY-MM-DD)',
     example: '2026-10-01',
   })

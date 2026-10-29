@@ -10,6 +10,19 @@ export class Caja extends BaseEntity {
   @JoinColumn({ name: 'usuario_id' })
   usuario: Usuario;
 
+  /**
+   * Número de caja visible (1, 2, 3…). Independiente del id técnico.
+   * Nullable solo para poder agregar la columna sobre cajas ya existentes;
+   * la apertura siempre lo asigna y el arranque rellena los nulos con el id.
+   */
+  @Column({
+    type: 'int',
+    unsigned: true,
+    unique: true,
+    nullable: true,
+  })
+  numero: number | null;
+
   @Column({
     name: 'monto_apertura',
     type: 'decimal',
