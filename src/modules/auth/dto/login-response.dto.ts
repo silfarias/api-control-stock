@@ -16,8 +16,8 @@ export class LoginResponseDto {
   refresh_token: string;
 
   @ApiProperty({
-    description: 'Tiempo de expiración del access token (ej: 1d, 1h)',
-    example: '1d',
+    description: 'Tiempo de expiración del access token (ej: 15m, 1h)',
+    example: '15m',
   })
   expires_in: string;
 

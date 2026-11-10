@@ -4,7 +4,7 @@ import { Producto } from '../../producto/entities/producto.entity.js';
 
 @Entity('stock')
 export class Stock extends BaseEntity {
-  @OneToOne(() => Producto, { nullable: false })
+  @OneToOne(() => Producto, (producto) => producto.stock, { nullable: false })
   @JoinColumn({ name: 'producto_id' })
   producto: Producto;
 

@@ -6,6 +6,10 @@
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "yarn@4.18.0",
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -14,6 +18,15 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "seed:admin": "node scripts/seed-admin.mjs",
+    "typeorm": "node --import tsx ./node_modules/typeorm/cli.js",
+    "migration:create": "yarn typeorm migration:create",
+    "migration:generate": "yarn typeorm migration:generate src/database/migrations/Migration -d src/config/data-source.config.ts",
+    "migration:run": "yarn typeorm migration:run -d src/config/data-source.config.ts",
+    "migration:show": "yarn typeorm migration:show -d src/config/data-source.config.ts",
+    "migration:revert": "yarn typeorm migration:revert -d src/config/data-source.config.ts",
+    "migration:baseline": "node scripts/migration-baseline.mjs",
+    "backup:mysql": "node scripts/backup-mysql.mjs",
+    "restore:mysql": "node scripts/restore-mysql.mjs",
     "lint": "oxlint src/ test/",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -34,6 +47,7 @@
     "bcryptjs": "^3.0.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "dotenv": "^18.0.10",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.12.1",
@@ -56,6 +70,7 @@
     "oxlint": "^1.58.0",
     "prettier": "^3.4.2",
     "supertest": "^7.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.2",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^4.1.2"

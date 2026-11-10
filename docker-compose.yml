@@ -3,9 +3,12 @@ services:
     image: mysql:9.7
     container_name: control-stock-mysql
     restart: unless-stopped
+    # Solo localhost: evita exposición en LAN/Internet. En VPS de producción
+    # preferir no publicar el puerto y conectar por red Docker interna.
     ports:
-      - '${DB_PORT:-3306}:3306'
+      - '127.0.0.1:${DB_PORT:-3306}:3306'
     environment:
+      # Root solo para bootstrap local. En prod: usuarios dedicados (scripts/sql/03-mysql-users.sql).
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME}
     volumes:

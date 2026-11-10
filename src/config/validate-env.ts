@@ -1,7 +1,10 @@
 /**
- * Fail-fast al arrancar si faltan variables críticas de autenticación.
- * En tests (Jest) se omite: usar `test/setup-e2e-env.ts` para valores dummy.
+ * Fail-fast al arrancar si faltan variables críticas de autenticación
+ * o hay una configuración insegura para producción.
+ * En tests se omite con NODE_ENV=test o SKIP_AUTH_ENV_VALIDATION=true.
  */
+
+const MIN_SECRET_LENGTH = 16;
 
 function shouldSkipAuthValidation(): boolean {
   return (
@@ -16,10 +19,11 @@ export function validateRequiredAuthEnv(): void {
     return;
   }
 
-  // Solo tokens emitidos por esta API: longitud mínima y obligatorios.
-  // JWT_SECRET (AUTH externa) es opcional y puede ser corto: lo define el proveedor, no esta plantilla.
   const missing: string[] = [];
-  for (const key of ['ACCESS_TOKEN_SECRET', 'ACCESS_TOKEN_REFRESH_SECRET'] as const) {
+  for (const key of [
+    'ACCESS_TOKEN_SECRET',
+    'ACCESS_TOKEN_REFRESH_SECRET',
+  ] as const) {
     if (!process.env[key]?.trim()) {
       missing.push(key);
     }
@@ -31,11 +35,41 @@ export function validateRequiredAuthEnv(): void {
     );
   }
 
-  const min = 16;
-  for (const key of ['ACCESS_TOKEN_SECRET', 'ACCESS_TOKEN_REFRESH_SECRET'] as const) {
-    const v = process.env[key]!.trim();
-    if (v.length < min) {
-      throw new Error(`${key} debe tener al menos ${min} caracteres.`);
+  const access = process.env.ACCESS_TOKEN_SECRET!.trim();
+  const refresh = process.env.ACCESS_TOKEN_REFRESH_SECRET!.trim();
+
+  for (const [key, value] of [
+    ['ACCESS_TOKEN_SECRET', access],
+    ['ACCESS_TOKEN_REFRESH_SECRET', refresh],
+  ] as const) {
+    if (value.length < MIN_SECRET_LENGTH) {
+      throw new Error(`${key} debe tener al menos ${MIN_SECRET_LENGTH} caracteres.`);
     }
+  }
+
+  if (access === refresh) {
+    throw new Error(
+      'ACCESS_TOKEN_SECRET y ACCESS_TOKEN_REFRESH_SECRET deben ser distintos.',
+    );
+  }
+
+  // Evita exponer seed-admin por un .env de producción mal copiado.
+  if (
+    process.env.NODE_ENV === 'production' &&
+    process.env.SEED_ADMIN_ENABLED === 'true'
+  ) {
+    throw new Error(
+      'SEED_ADMIN_ENABLED=true no está permitido con NODE_ENV=production. Desactivá el seed en producción.',
+    );
+  }
+
+  // schema:sync / synchronize no es mecanismo de producción.
+  if (
+    process.env.NODE_ENV === 'production' &&
+    process.env.DB_SYNCHRONIZE === 'true'
+  ) {
+    throw new Error(
+      'DB_SYNCHRONIZE=true no está permitido con NODE_ENV=production. Usá migraciones (yarn migration:run).',
+    );
   }
 }

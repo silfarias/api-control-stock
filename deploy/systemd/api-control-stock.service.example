@@ -1,0 +1,53 @@
+# Ejemplo systemd — NestJS API Control de Stock
+# Copiar a: /etc/systemd/system/api-control-stock.service
+# Sustituir rutas y usuario según el VPS.
+#
+# Usuario dedicado (sin sudo habitual):
+#   sudo adduser --system --group --home /var/www/control-stock stockapi
+#
+# Activación (NO ejecutar en esta etapa de preparación):
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now api-control-stock
+#   sudo systemctl status api-control-stock
+#   journalctl -u api-control-stock -f
+
+[Unit]
+Description=API Control de Stock (NestJS)
+Documentation=file:///var/www/control-stock/api/docs/despliegue-vps.md
+After=network.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stockapi
+Group=stockapi
+WorkingDirectory=/var/www/control-stock/api
+
+# Secrets: archivo solo lectura para stockapi (chmod 600, owner stockapi)
+EnvironmentFile=/etc/control-stock/api.env
+
+# Node 22+ (ajustar ruta si usás nvm/fnm)
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Cierre ordenado: Nest enableShutdownHooks() libera HTTP + TypeORM
+KillSignal=SIGTERM
+
+# Endurecimiento básico
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/control-stock/api/backups
+
+# Límites
+LimitNOFILE=65535
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=api-control-stock
+
+[Install]
+WantedBy=multi-user.target

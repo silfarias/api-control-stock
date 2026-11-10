@@ -43,6 +43,11 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+# Backups MySQL (nunca versionar dumps)
+/backups
+*.sql.gz
+*.sql.gz.tmp
+
 # temp directory
 .temp
 .tmp

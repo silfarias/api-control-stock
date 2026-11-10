@@ -40,6 +40,14 @@ export class ProductoDTO extends CommonDTO {
   @Expose()
   minimoStock: number;
 
+  @ApiProperty({
+    description: 'Cantidad actual en stock (tabla inventario)',
+    type: Number,
+    example: 25,
+  })
+  @Expose()
+  stockCantidad: number;
+
   @ApiProperty({ description: 'Categoría del producto', type: () => CategoriaDTO })
   @Type(() => CategoriaDTO)
   @Expose()

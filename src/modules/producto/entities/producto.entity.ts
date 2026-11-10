@@ -1,6 +1,7 @@
-import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, OneToOne } from 'typeorm';
 import { BaseEntity } from '../../../common/models/baseentity.js';
 import { Categoria } from '../../categoria/entities/categoria.entity.js';
+import type { Stock } from '../../inventario/entities/stock.entity.js';
 
 @Entity('producto')
 export class Producto extends BaseEntity {
@@ -19,6 +20,10 @@ export class Producto extends BaseEntity {
   @ManyToOne(() => Categoria, { nullable: false, eager: false })
   @JoinColumn({ name: 'categoria_id' })
   categoria: Categoria;
+
+  /** Relación inversa; la FK vive en `stock.producto_id`. */
+  @OneToOne('Stock', 'producto')
+  stock?: Stock;
 
   @Column({
     name: 'precio_costo',

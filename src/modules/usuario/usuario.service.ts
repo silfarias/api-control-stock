@@ -8,6 +8,7 @@ import { ErrorHandlerService } from '../../common/services/error-handler.service
 import { GetEntityService } from '../../common/services/get-entity.service.js';
 import { PasswordHelper } from '../../common/utils/password-helper.js';
 import { renameOnDelete } from '../../common/utils/rename-on-delete.js';
+import { AuthSessionService } from '../auth/services/auth-session.service.js';
 import { CreateUsuarioRequestDto } from './dto/create-usuario-request.dto.js';
 import { SearchUsuarioRequestDto } from './dto/search-usuario-request.dto.js';
 import { UpdateUsuarioRequestDto } from './dto/update-usuario-request.dto.js';
@@ -25,6 +26,7 @@ export class UsuarioService {
     private readonly usuarioRepository: UsuarioRepository,
     private readonly getEntity: GetEntityService,
     private readonly errorHandler: ErrorHandlerService,
+    private readonly authSessionService: AuthSessionService,
   ) {}
 
   async findOne(id: number): Promise<UsuarioDTO> {
@@ -64,6 +66,9 @@ export class UsuarioService {
       const usuario = await this.getEntity.findById(Usuario, userId);
       usuario.password = await this.passwordHelper.hashPassword(newPassword);
       const saved = await this.usuarioRepository.save(usuario);
+      // AuthService.changePassword también revoca; se mantiene idempotente aquí
+      // por si se llama directo.
+      await this.authSessionService.revokeAllForUser(userId);
       return this.usuarioMapper.entity2DTO(saved);
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
@@ -134,11 +139,15 @@ export class UsuarioService {
           await this.ensureNotLastAdmin(manager);
         }
 
+        const passwordChanged = request.password !== undefined;
         const updated = await this.usuarioMapper.updateDTO2Entity(
           usuario,
           request,
         );
         const saved = await repo.save(updated);
+        if (passwordChanged) {
+          await this.authSessionService.revokeAllForUser(id);
+        }
         return this.usuarioMapper.entity2DTO(saved);
       });
     } catch (error) {
@@ -172,6 +181,7 @@ export class UsuarioService {
         await repo.save(usuario);
         await repo.softRemove(usuario);
       });
+      await this.authSessionService.revokeAllForUser(id);
       return 'Registro eliminado correctamente';
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;

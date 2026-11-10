@@ -17,7 +17,9 @@ export class ProductoRepository extends Repository<Producto> {
   async search(request: SearchProductoRequestDto): Promise<PageDto<Producto>> {
     const queryBuilder: SelectQueryBuilder<Producto> = this.createQueryBuilder(
       'producto',
-    ).leftJoinAndSelect('producto.categoria', 'categoria');
+    )
+      .leftJoinAndSelect('producto.categoria', 'categoria')
+      .leftJoinAndSelect('producto.stock', 'stock');
 
     if (request.id) {
       queryBuilder.andWhere('producto.id = :id', { id: request.id });

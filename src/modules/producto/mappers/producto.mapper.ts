@@ -11,9 +11,11 @@ import { Producto } from '../entities/producto.entity.js';
 @Injectable()
 export class ProductoMapper {
   async entity2DTO(producto: Producto): Promise<ProductoDTO> {
-    return plainToInstance(ProductoDTO, producto, {
+    const dto = plainToInstance(ProductoDTO, producto, {
       excludeExtraneousValues: true,
     });
+    dto.stockCantidad = producto.stock?.cantidad ?? 0;
+    return dto;
   }
 
   async page2Dto(

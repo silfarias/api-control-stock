@@ -23,6 +23,8 @@ TRUNCATE TABLE proveedor;
 TRUNCATE TABLE venta_numeracion;
 TRUNCATE TABLE compra_numeracion;
 TRUNCATE TABLE caja_numeracion;
+TRUNCATE TABLE ticket;
+TRUNCATE TABLE auth_session;
 TRUNCATE TABLE usuario;
 
 SET FOREIGN_KEY_CHECKS = 1;

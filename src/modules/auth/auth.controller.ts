@@ -23,6 +23,7 @@ import {
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ERRORS } from '../../common/errors/errors-codes.js';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
+import { RequestUser } from '../../common/interfaces/jwt.interface.js';
 import { UsuarioDTO } from '../usuario/dto/usuario.dto.js';
 import { AuthService } from './auth.service.js';
 import { ChangePasswordRequestDto } from './dto/change-password-request.dto.js';
@@ -40,7 +41,12 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({
+    default: {
+      limit: Number(process.env.THROTTLE_AUTH_LIMIT) || 5,
+      ttl: Number(process.env.THROTTLE_AUTH_TTL_MS) || 60_000,
+    },
+  })
   @Post('signup')
   @HttpCode(HttpStatus.FORBIDDEN)
   @ApiOperation({
@@ -66,48 +72,70 @@ export class AuthController {
   }
 
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @Throttle({
+    default: {
+      limit: Number(process.env.THROTTLE_SEED_LIMIT) || 3,
+      ttl: Number(process.env.THROTTLE_AUTH_TTL_MS) || 60_000,
+    },
+  })
   @Post('seed-admin')
   @ApiOperation({
     summary: 'Crear usuario ADMIN inicial',
     description:
-      'Bootstrap idempotente del admin (Silvana). Requiere SEED_ADMIN_ENABLED=true. Si ya existe, solo autentica.',
+      'Bootstrap idempotente. Requiere SEED_ADMIN_ENABLED=true y NODE_ENV≠production. Credenciales solo desde .env. Si ya existe, autentica.',
   })
   @ApiOkResponse({ type: SeedAdminResponseDto })
   @ApiForbiddenResponse({
-    description: 'Seed deshabilitado (SEED_ADMIN_ENABLED≠true)',
+    description:
+      'Seed deshabilitado, incompleto o bloqueado en producción',
   })
   async seedAdmin(): Promise<SeedAdminResponseDto> {
     return this.authService.seedAdmin();
   }
 
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle({
+    default: {
+      limit: Number(process.env.THROTTLE_AUTH_LIMIT) || 10,
+      ttl: Number(process.env.THROTTLE_AUTH_TTL_MS) || 60_000,
+    },
+  })
   @Post('login')
   @ApiOperation({
     summary: 'Iniciar sesión',
     description:
-      'Autentica con email y password. Devuelve access_token y refresh_token.',
+      'Autentica con email y password. Crea una sesión y devuelve access_token + refresh_token (rotativo).',
   })
   @ApiBody({ type: LoginRequestDto, description: 'Credenciales' })
   @ApiOkResponse({ type: LoginResponseDto, description: 'Login exitoso' })
   @ApiBadRequestResponse({ description: 'Solicitud incorrecta' })
   @ApiUnauthorizedResponse({ description: 'Credenciales inválidas' })
-  async login(@Body() body: LoginRequestDto): Promise<LoginResponseDto> {
+  async login(
+    @Body() body: LoginRequestDto,
+    @Request() req: { headers: Record<string, string | undefined>; ip?: string },
+  ): Promise<LoginResponseDto> {
     const usuario = await this.authService.validateUser(
       body.email,
       body.password,
     );
-    return this.authService.login(usuario);
+    return this.authService.login(usuario, {
+      userAgent: req.headers['user-agent'] ?? null,
+      ip: req.ip ?? null,
+    });
   }
 
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 15, ttl: 60_000 } })
+  @Throttle({
+    default: {
+      limit: Number(process.env.THROTTLE_REFRESH_LIMIT) || 15,
+      ttl: Number(process.env.THROTTLE_AUTH_TTL_MS) || 60_000,
+    },
+  })
   @Post('refresh')
   @ApiOperation({
     summary: 'Renovar tokens',
     description:
-      'Intercambia un refresh_token válido por un nuevo par de tokens.',
+      'Intercambia un refresh_token válido por un nuevo par. El refresh anterior queda invalidado (rotación).',
   })
   @ApiBody({ type: RefreshTokenRequestDto })
   @ApiOkResponse({ type: LoginResponseDto, description: 'Tokens renovados' })
@@ -126,7 +154,7 @@ export class AuthController {
   @ApiOkResponse({ type: UsuarioDTO, description: 'Usuario actual' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async getCurrentUser(
-    @Request() req: { user: { id: number } },
+    @Request() req: { user: RequestUser },
   ): Promise<UsuarioDTO> {
     return this.authService.getCurrentUser(req.user.id);
   }
@@ -137,7 +165,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Cerrar sesión',
     description:
-      'Cierra la sesión. El cliente debe eliminar los tokens del almacenamiento local.',
+      'Revoca la sesión actual en el servidor. El access y refresh de esa sesión dejan de servir. El cliente también debe borrar los tokens locales.',
   })
   @ApiOkResponse({
     description: 'Sesión cerrada',
@@ -150,9 +178,9 @@ export class AuthController {
   })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async logout(
-    @Request() req: { user: { id: number } },
+    @Request() req: { user: RequestUser },
   ): Promise<{ message: string }> {
-    return this.authService.logout(req.user.id);
+    return this.authService.logout(req.user.id, req.user.sid);
   }
 
   @Patch('change-password')
@@ -160,7 +188,8 @@ export class AuthController {
   @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Cambiar contraseña',
-    description: 'Cambia la contraseña del usuario autenticado.',
+    description:
+      'Cambia la contraseña y revoca todas las sesiones del usuario. Hay que volver a iniciar sesión.',
   })
   @ApiBody({ type: ChangePasswordRequestDto })
   @ApiOkResponse({
@@ -170,7 +199,7 @@ export class AuthController {
   @ApiBadRequestResponse({ description: 'Datos inválidos o no coinciden' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async changePassword(
-    @Request() req: { user: { id: number } },
+    @Request() req: { user: RequestUser },
     @Body() body: ChangePasswordRequestDto,
   ): Promise<ChangePasswordResponseDto> {
     return this.authService.changePassword(body, req.user.id);

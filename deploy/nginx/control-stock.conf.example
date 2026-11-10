@@ -1,0 +1,90 @@
+# Ejemplo Nginx — API Control de Stock + frontend React (Vite)
+# Copiar a: /etc/nginx/sites-available/control-stock
+# Sustituir:
+#   api.ejemplo.com     → dominio (o subdominio) público
+#   /var/www/control-stock/frontend/dist  → build del front
+#   127.0.0.1:3000      → HOST:PORT de Nest (solo localhost)
+#
+# Alternativa limpia: app.ejemplo.com (solo estáticos) + api.ejemplo.com (solo proxy a Nest).
+# Si usás un solo dominio, cuidá colisiones entre rutas del SPA y prefijos de la API.
+#
+# HTTPS: obtener certificados con certbot (no ejecutar en esta etapa de preparación).
+#   certbot --nginx -d api.ejemplo.com
+#
+# La API Nest NO se publica en 0.0.0.0: solo escucha 127.0.0.1 detrás de este proxy.
+
+upstream nest_api {
+    server 127.0.0.1:3000;
+    keepalive 32;
+}
+
+# Redirección HTTP → HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name api.ejemplo.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name api.ejemplo.com;
+
+    # Rutas de certificado (certbot las rellena; placeholders de ejemplo)
+    ssl_certificate     /etc/letsencrypt/live/api.ejemplo.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.ejemplo.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Límites razonables (alinear con BODY_LIMIT de la API, default 1mb)
+    client_max_body_size 2m;
+
+    # Seguridad básica de headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Frontend estático (React Router: try_files → index.html)
+    root /var/www/control-stock/frontend/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API NestJS (ajustar prefijo si el front llama a /api/v1/…)
+    # Ejemplo: el cliente usa https://api.ejemplo.com/auth/login → proxy a Nest /auth/login
+    location ~ ^/(auth|usuario|categoria|producto|inventario|proveedor|compra|venta|caja|reporte|ticket|health)(/|$) {
+        proxy_pass http://nest_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # Opcional: bloquear Swagger si alguien lo habilitara por error
+    location = /api {
+        return 404;
+    }
+    location /api/ {
+        return 404;
+    }
+
+    # No servir archivos ocultos
+    location ~ /\. {
+        deny all;
+    }
+}

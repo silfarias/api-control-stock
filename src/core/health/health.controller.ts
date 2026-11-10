@@ -21,7 +21,7 @@ export class HealthController {
   @ApiOperation({
     summary: 'Estado de la API',
     description:
-      'Comprueba conectividad con la base de datos. Útil para probes de Kubernetes y monitoreo.',
+      'Comprueba conectividad con la base de datos. Útil para monitoreo y healthchecks de Nginx/systemd.',
   })
   check() {
     return this.health.check([() => this.db.pingCheck('database')]);

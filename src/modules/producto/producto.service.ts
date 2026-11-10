@@ -29,6 +29,7 @@ export class ProductoService {
   async findOne(id: number): Promise<ProductoDTO> {
     const producto = await this.getEntity.findById(Producto, id, {
       categoria: true,
+      stock: true,
     });
     return this.productoMapper.entity2DTO(producto);
   }

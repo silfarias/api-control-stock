@@ -1,13 +1,11 @@
 import {
   ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import {
-  getAccessTokenSecret,
-  getRefreshTokenSecret,
-} from '../../config/auth-secrets.js';
+import { getRefreshTokenSecret } from '../../config/auth-secrets.js';
 import { ERRORS } from '../../common/errors/errors-codes.js';
 import { UsuarioRole } from '../../common/enums/usuario-role.enum.js';
 import { CreateUsuarioRequestDto } from '../usuario/dto/create-usuario-request.dto.js';
@@ -19,65 +17,38 @@ import { LoginResponseDto } from './dto/login-response.dto.js';
 import { SeedAdminResponseDto } from './dto/seed-admin-response.dto.js';
 import { SignupRequestDto } from './dto/signup-request.dto.js';
 import { SignupResponseDto } from './dto/signup-response.dto.js';
+import {
+  AuthSessionService,
+  SessionMeta,
+} from './services/auth-session.service.js';
 
-const DEFAULT_SEED_ADMIN = {
-  nombre: 'Silvana',
-  email: 'silvifarias17@gmail.com',
-  password: 'Sfa140320',
-} as const;
+type RefreshJwtPayload = {
+  sub: number | string;
+  sid?: string;
+  typ?: string;
+};
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly usuarioService: UsuarioService,
     private readonly jwtService: JwtService,
+    private readonly authSessionService: AuthSessionService,
   ) {}
-
-  private getAccessTokenExpiresIn(): string {
-    return process.env.ACCESS_TOKEN_EXPIRES_IN || '1d';
-  }
-
-  private getRefreshTokenExpiresIn(): string {
-    return process.env.ACCESS_TOKEN_REFRESH_EXPIRES_IN || '30d';
-  }
-
-  private buildPayload(usuario: UsuarioDTO) {
-    return {
-      sub: usuario.id,
-      email: usuario.email,
-      role: usuario.role,
-    };
-  }
-
-  private generateTokenPair(usuario: UsuarioDTO): {
-    access_token: string;
-    refresh_token: string;
-  } {
-    const payload = this.buildPayload(usuario);
-    const access_token = this.jwtService.sign(payload, {
-      secret: getAccessTokenSecret(),
-      expiresIn: this.getAccessTokenExpiresIn() as any,
-    });
-    const refresh_token = this.jwtService.sign(
-      { sub: usuario.id },
-      {
-        secret: getRefreshTokenSecret(),
-        expiresIn: this.getRefreshTokenExpiresIn() as any,
-      },
-    );
-    return { access_token, refresh_token };
-  }
 
   async validateUser(email: string, password: string): Promise<UsuarioDTO> {
     return this.usuarioService.login(email, password);
   }
 
-  async login(usuario: UsuarioDTO): Promise<LoginResponseDto> {
-    const { access_token, refresh_token } = this.generateTokenPair(usuario);
+  async login(
+    usuario: UsuarioDTO,
+    meta: SessionMeta = {},
+  ): Promise<LoginResponseDto> {
+    const tokens = await this.authSessionService.issueNewSession(usuario, meta);
     return {
-      access_token,
-      refresh_token,
-      expires_in: this.getAccessTokenExpiresIn(),
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_in: tokens.expires_in,
       usuario,
     };
   }
@@ -93,28 +64,49 @@ export class AuthService {
     try {
       const payload = this.jwtService.verify(refreshToken, {
         secret: getRefreshTokenSecret(),
-      }) as { sub: number | string };
+        algorithms: ['HS256'],
+      }) as RefreshJwtPayload;
+
+      if (payload.typ !== 'refresh') {
+        throw new UnauthorizedException({
+          code: ERRORS.AUTHENTICATION.TOKEN_INVALID.CODE,
+          message: 'Refresh token inválido',
+        });
+      }
 
       const userId =
         typeof payload.sub === 'string'
           ? parseInt(payload.sub, 10)
           : payload.sub;
 
-      if (Number.isNaN(userId)) {
-        throw new UnauthorizedException('Refresh token inválido');
+      if (!Number.isInteger(userId) || userId < 1 || !payload.sid) {
+        throw new UnauthorizedException({
+          code: ERRORS.AUTHENTICATION.TOKEN_INVALID.CODE,
+          message: 'Refresh token inválido',
+        });
       }
 
       const usuario = await this.usuarioService.findOne(userId);
-      const { access_token, refresh_token } = this.generateTokenPair(usuario);
+      const tokens = await this.authSessionService.rotateSession(
+        refreshToken,
+        usuario,
+        payload.sid,
+      );
 
       return {
-        access_token,
-        refresh_token,
-        expires_in: this.getAccessTokenExpiresIn(),
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_in: tokens.expires_in,
         usuario,
       };
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;
+      if (err instanceof NotFoundException) {
+        throw new UnauthorizedException({
+          code: ERRORS.AUTHENTICATION.UNAUTHORIZED.CODE,
+          message: 'Usuario no autorizado o inexistente',
+        });
+      }
       throw new UnauthorizedException({
         code: ERRORS.AUTHENTICATION.TOKEN_INVALID.CODE,
         message: 'Refresh token inválido o expirado',
@@ -131,12 +123,12 @@ export class AuthService {
     };
 
     const usuario = await this.usuarioService.create(createDto);
-    const { access_token, refresh_token } = this.generateTokenPair(usuario);
+    const tokens = await this.authSessionService.issueNewSession(usuario);
 
     return {
-      access_token,
-      refresh_token,
-      expires_in: this.getAccessTokenExpiresIn(),
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_in: tokens.expires_in,
       usuario,
       message: 'Usuario registrado y autenticado exitosamente',
     };
@@ -144,9 +136,16 @@ export class AuthService {
 
   /**
    * Crea el usuario ADMIN inicial (idempotente).
-   * Solo habilitado con SEED_ADMIN_ENABLED=true (dev / bootstrap).
+   * Solo en no-producción y con SEED_ADMIN_ENABLED=true.
    */
   async seedAdmin(): Promise<SeedAdminResponseDto> {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException({
+        code: ERRORS.AUTHORIZATION.FORBIDDEN.CODE,
+        message: 'Seed admin no está disponible en producción',
+      });
+    }
+
     if (process.env.SEED_ADMIN_ENABLED !== 'true') {
       throw new ForbiddenException({
         code: ERRORS.AUTHORIZATION.FORBIDDEN.CODE,
@@ -155,23 +154,28 @@ export class AuthService {
       });
     }
 
-    const nombre =
-      process.env.SEED_ADMIN_NOMBRE?.trim() || DEFAULT_SEED_ADMIN.nombre;
-    const email =
-      process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase() ||
-      DEFAULT_SEED_ADMIN.email;
-    const password =
-      process.env.SEED_ADMIN_PASSWORD?.trim() || DEFAULT_SEED_ADMIN.password;
+    const nombre = process.env.SEED_ADMIN_NOMBRE?.trim();
+    const email = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
+    const password = process.env.SEED_ADMIN_PASSWORD?.trim();
+
+    if (!nombre || !email || !password) {
+      throw new ForbiddenException({
+        code: ERRORS.AUTHORIZATION.FORBIDDEN.CODE,
+        message:
+          'Seed admin incompleto. Definí SEED_ADMIN_NOMBRE, SEED_ADMIN_EMAIL y SEED_ADMIN_PASSWORD en .env',
+      });
+    }
 
     const existente = await this.usuarioService.findByEmail(email);
     if (existente) {
-      const tokens = this.generateTokenPair(existente);
+      const tokens = await this.authSessionService.issueNewSession(existente);
       return {
         created: false,
         message: 'El usuario admin ya existía',
         usuario: existente,
-        ...tokens,
-        expires_in: this.getAccessTokenExpiresIn(),
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_in: tokens.expires_in,
       };
     }
 
@@ -183,14 +187,15 @@ export class AuthService {
     };
 
     const usuario = await this.usuarioService.create(createDto);
-    const tokens = this.generateTokenPair(usuario);
+    const tokens = await this.authSessionService.issueNewSession(usuario);
 
     return {
       created: true,
       message: 'Usuario admin creado correctamente',
       usuario,
-      ...tokens,
-      expires_in: this.getAccessTokenExpiresIn(),
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_in: tokens.expires_in,
     };
   }
 
@@ -198,21 +203,37 @@ export class AuthService {
     return this.usuarioService.findOne(userId);
   }
 
+  /**
+   * Cambia password y revoca TODAS las sesiones del usuario
+   * (incluida la actual). El access vigente deja de servir en el próximo request
+   * porque el guard valida sesión activa.
+   */
   async changePassword(
     changePasswordDto: ChangePasswordRequestDto,
     userId: number,
   ): Promise<ChangePasswordResponseDto> {
+    // UsuarioService.changePassword ya revoca todas las sesiones.
     const usuario = await this.usuarioService.changePassword(
       userId,
       changePasswordDto.password,
     );
     return {
-      message: 'Contraseña cambiada exitosamente',
+      message:
+        'Contraseña cambiada exitosamente. Volvé a iniciar sesión.',
       usuario,
     };
   }
 
-  async logout(_userId: number): Promise<{ message: string }> {
+  /**
+   * Revoca la sesión del access token actual.
+   * El access token deja de ser aceptado de inmediato (guard chequea sesión).
+   */
+  async logout(userId: number, sessionId?: string): Promise<{ message: string }> {
+    if (sessionId) {
+      await this.authSessionService.revokeSession(sessionId);
+    } else {
+      await this.authSessionService.revokeAllForUser(userId);
+    }
     return { message: 'Sesión cerrada exitosamente' };
   }
 }

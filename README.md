@@ -56,12 +56,17 @@ cp .env.example .env
 # 3. Base de datos
 docker compose up -d
 
-# 4. API
+# 4. Esquema (migraciones TypeORM; no usar synchronize en prod)
+yarn migration:run
+
+# 5. API
 yarn start:dev
 
-# 5. Admin inicial (con SEED_ADMIN_ENABLED=true)
+# 6. Admin inicial (con SEED_ADMIN_ENABLED=true)
 yarn seed:admin
 ```
+
+Bases ya creadas con `synchronize: true`: ver [docs/migraciones.md](docs/migraciones.md) (baseline sin recrear tablas).
 
 - API: http://localhost:3000  
 - Swagger: http://localhost:3000/api  
@@ -76,8 +81,18 @@ yarn seed:admin
 | `yarn start:dev` | Desarrollo con watch |
 | `yarn build` / `yarn start:prod` | Build y producción |
 | `yarn seed:admin` | Crea/autentica admin (`POST /auth/seed-admin`) |
+| `yarn migration:run` / `show` / `revert` | Aplicar / listar / revertir migraciones |
+| `yarn migration:generate` / `create` | Generar o crear migración |
+| `yarn migration:baseline --confirm` | Marcar InitialSchema en DB existente (sin DDL) |
+| `yarn backup:mysql` | Dump lógico comprimido (`.sql.gz`) |
+| `yarn restore:mysql -- --file … --target … --confirm` | Restaurar en base temporal |
 | `yarn lint` | Oxlint |
 | `yarn test` / `yarn test:e2e` | Tests |
+
+- Migraciones / baseline: [docs/migraciones.md](docs/migraciones.md)
+- Usuarios y exposición MySQL: [docs/mysql-seguridad.md](docs/mysql-seguridad.md)
+- Backups / restore: [docs/backups.md](docs/backups.md)
+- Despliegue VPS (preparación, Nginx, systemd): [docs/despliegue-vps.md](docs/despliegue-vps.md)
 
 ---
 
@@ -113,7 +128,7 @@ En producción: `SEED_ADMIN_ENABLED=false`.
 | `/caja` | abrir, cerrar, movimientos |
 | `/reporte` | ventas, diario, productos-top, stock-bajo, inventario |
 
-Detalle y schemas: Swagger en `/api`.
+Detalle y schemas: Swagger en `/api` (deshabilitado en `NODE_ENV=production`).
 
 ---
 
@@ -136,11 +151,17 @@ Controller → Service → Repository + Mapper
 
 Ver `.env.example`:
 
-- `DB_*` — MySQL  
+- `HOST` / `PORT` — escucha (prod: `127.0.0.1`)  
+- `TRUST_PROXY` / `CORS_*` — detrás de Nginx  
+- `DB_*` — MySQL (en prod: usuario `app_stock`, no root)  
+- `DB_SYNCHRONIZE` — solo no-prod y explícito; default off (usar migraciones)  
+- `DB_LOGGING` — SQL de TypeORM en consola (opcional)  
+- `BACKUP_*` / `RESTORE_*` — dumps y restauración (ver `.env.example`)  
 - `ACCESS_TOKEN_*` — JWT  
 - `SEED_ADMIN_*` — bootstrap admin  
 - `THROTTLE_*` — rate limit (opcional)  
 - `DB_TIMEZONE` — default `-03:00`  
+- Plantilla prod: [`deploy/env.production.example`](deploy/env.production.example)
 
 ---
 

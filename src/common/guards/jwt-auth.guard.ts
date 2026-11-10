@@ -5,78 +5,137 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import jwt from 'jsonwebtoken';
+import { DataSource } from 'typeorm';
 import { getAccessTokenSecret } from '../../config/auth-secrets.js';
+import { AuthSession } from '../../modules/auth/entities/auth-session.entity.js';
+import { Usuario } from '../../modules/usuario/entities/usuario.entity.js';
 import { UsuarioRole } from '../enums/usuario-role.enum.js';
+import { ERRORS } from '../errors/errors-codes.js';
 import { JwtPayload, RequestUser } from '../interfaces/jwt.interface.js';
 
+const JWT_ALGORITHMS: jwt.Algorithm[] = ['HS256'];
+
 /**
- * Guard que valida el access token y popula `request.user` (id, email, role).
+ * Valida access token HS256, tip=access, sesión activa y usuario existente.
+ * Logout / change-password revocan la sesión → el access deja de servir de inmediato.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
+  constructor(private readonly dataSource: DataSource) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException(
-        'Token de autorización no encontrado o formato inválido',
-      );
+      throw new UnauthorizedException({
+        code: ERRORS.AUTHENTICATION.UNAUTHORIZED.CODE,
+        message: 'Token de autorización no encontrado o formato inválido',
+      });
     }
 
     const token = authHeader.substring(7);
+    let payload: JwtPayload & jwt.JwtPayload;
 
     try {
-      const apiSecret = getAccessTokenSecret();
-      const decoded = jwt.verify(token, apiSecret);
+      const decoded = jwt.verify(token, getAccessTokenSecret(), {
+        algorithms: JWT_ALGORITHMS,
+      });
 
       if (typeof decoded === 'string') {
-        throw new UnauthorizedException('Formato de token inválido');
+        throw new UnauthorizedException({
+          code: ERRORS.AUTHENTICATION.TOKEN_INVALID.CODE,
+          message: 'Formato de token inválido',
+        });
       }
 
-      const payload = decoded as JwtPayload & jwt.JwtPayload;
-
-      if (payload.sub == null) {
-        throw new UnauthorizedException('Token inválido: falta sub');
-      }
-
-      if (
-        !payload.role ||
-        !Object.values(UsuarioRole).includes(payload.role as UsuarioRole)
-      ) {
-        throw new UnauthorizedException(
-          'Token inválido: falta role o el valor no es válido. Volvé a iniciar sesión.',
-        );
-      }
-
-      const user: RequestUser = {
-        id: Number(payload.sub),
-        sub: Number(payload.sub),
-        email: payload.email,
-        role: payload.role as UsuarioRole,
-        iat: payload.iat,
-        exp: payload.exp,
-      };
-
-      request.user = user;
-      return true;
+      payload = decoded as JwtPayload & jwt.JwtPayload;
     } catch (error) {
-      if (error instanceof UnauthorizedException) {
-        throw error;
-      }
+      if (error instanceof UnauthorizedException) throw error;
 
-      // jsonwebtoken es CJS: no usar instanceof con clases del namespace ESM
       const name = error instanceof Error ? error.name : '';
       if (name === 'TokenExpiredError') {
-        throw new UnauthorizedException('Token expirado');
-      }
-      if (name === 'JsonWebTokenError' || name === 'NotBeforeError') {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new UnauthorizedException(`Token inválido: ${message}`);
+        throw new UnauthorizedException({
+          code: ERRORS.AUTHENTICATION.TOKEN_EXPIRED.CODE,
+          message: ERRORS.AUTHENTICATION.TOKEN_EXPIRED.MESSAGE,
+        });
       }
 
-      const message = error instanceof Error ? error.message : String(error);
-      throw new UnauthorizedException(`Error al procesar el token: ${message}`);
+      throw new UnauthorizedException({
+        code: ERRORS.AUTHENTICATION.TOKEN_INVALID.CODE,
+        message: ERRORS.AUTHENTICATION.TOKEN_INVALID.MESSAGE,
+      });
     }
+
+    if (payload.typ !== 'access') {
+      throw new UnauthorizedException({
+        code: ERRORS.AUTHENTICATION.TOKEN_INVALID.CODE,
+        message: 'Token inválido para este endpoint',
+      });
+    }
+
+    if (payload.sub == null || !payload.sid) {
+      throw new UnauthorizedException({
+        code: ERRORS.AUTHENTICATION.TOKEN_INVALID.CODE,
+        message: 'Token inválido: faltan claims de sesión. Volvé a iniciar sesión.',
+      });
+    }
+
+    const userId = Number(payload.sub);
+    if (!Number.isInteger(userId) || userId < 1) {
+      throw new UnauthorizedException({
+        code: ERRORS.AUTHENTICATION.TOKEN_INVALID.CODE,
+        message: ERRORS.AUTHENTICATION.TOKEN_INVALID.MESSAGE,
+      });
+    }
+
+    const usuario = await this.dataSource.getRepository(Usuario).findOne({
+      where: { id: userId },
+      select: { id: true, email: true, role: true },
+    });
+
+    if (!usuario) {
+      throw new UnauthorizedException({
+        code: ERRORS.AUTHENTICATION.UNAUTHORIZED.CODE,
+        message: 'Usuario no autorizado o inexistente',
+      });
+    }
+
+    if (!Object.values(UsuarioRole).includes(usuario.role)) {
+      throw new UnauthorizedException({
+        code: ERRORS.AUTHENTICATION.TOKEN_INVALID.CODE,
+        message: 'Rol de usuario inválido. Volvé a iniciar sesión.',
+      });
+    }
+
+    const session = await this.dataSource
+      .getRepository(AuthSession)
+      .createQueryBuilder('session')
+      .select(['session.id', 'session.usuarioId'])
+      .where('session.id = :sid', { sid: payload.sid })
+      .andWhere('session.usuario_id = :userId', { userId })
+      .andWhere('session.revoked_at IS NULL')
+      .andWhere('session.expires_at > :now', { now: new Date() })
+      .getOne();
+
+    if (!session) {
+      throw new UnauthorizedException({
+        code: ERRORS.AUTHENTICATION.UNAUTHORIZED.CODE,
+        message: 'Sesión inválida o revocada',
+      });
+    }
+
+    const user: RequestUser = {
+      id: usuario.id,
+      sub: usuario.id,
+      email: usuario.email,
+      role: usuario.role,
+      sid: payload.sid,
+      iat: payload.iat,
+      exp: payload.exp,
+    };
+
+    request.user = user;
+    return true;
   }
 }
