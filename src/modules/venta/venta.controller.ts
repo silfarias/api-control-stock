@@ -43,9 +43,10 @@ export class VentaController {
   @ApiOperation({
     summary: 'Buscar ventas',
     description:
-      'ADMIN o EMPLEADO. Los productos anidados omiten precioCosto para EMPLEADO.',
+      'ADMIN o EMPLEADO. Filtros opcionales: estado, metodoPago, fecha (YYYY-MM-DD), q y paginación. Los productos anidados omiten precioCosto para EMPLEADO.',
   })
   @PaginatedResponse(VentaDTO)
+  @ApiBadRequestResponse({ description: 'Parámetros inválidos (p. ej. fecha)' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async search(
     @Request() req: { user: RequestUser },

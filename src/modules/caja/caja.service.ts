@@ -3,6 +3,7 @@ import { EntityManager } from 'typeorm';
 import { PageDto } from '../../common/dto/page.dto.js';
 import { EstadoCaja } from '../../common/enums/estado-caja.enum.js';
 import { TipoMovimientoCaja } from '../../common/enums/tipo-movimiento-caja.enum.js';
+import { UsuarioRole } from '../../common/enums/usuario-role.enum.js';
 import { ERRORS } from '../../common/errors/errors-codes.js';
 import { RequestUser } from '../../common/interfaces/jwt.interface.js';
 import { ErrorHandlerService } from '../../common/services/error-handler.service.js';
@@ -57,26 +58,39 @@ export class CajaService implements OnModuleInit {
     return this.cajaMapper.entity2DTO(caja);
   }
 
+  /**
+   * Abre caja con monto inicial. Serializa aperturas concurrentes con el
+   * FOR UPDATE de numeración + chequeo de ABIERTA dentro de la misma TX.
+   */
   async abrir(
     request: AbrirCajaRequestDto,
     actor: RequestUser,
   ): Promise<CajaDTO> {
     try {
-      const abierta = await this.cajaRepository.findAbierta();
-      if (abierta) {
-        this.errorHandler.throwBadRequest(ERRORS.CAJA.YA_ABIERTA, {
-          cajaId: abierta.id,
-        });
-      }
-
       const savedId = await this.cajaRepository.manager.transaction(
         async (manager) => {
+          // Lock de numeración: serializa aperturas concurrentes.
+          const numero = await this.cajaRepository.allocateNumero(manager);
+
+          const abierta = await manager
+            .getRepository(Caja)
+            .createQueryBuilder('caja')
+            .setLock('pessimistic_write')
+            .where('caja.estado = :estado', { estado: EstadoCaja.ABIERTA })
+            .getOne();
+
+          if (abierta) {
+            this.errorHandler.throwBadRequest(ERRORS.CAJA.YA_ABIERTA, {
+              cajaId: abierta.id,
+            });
+          }
+
           const caja = new Caja();
           caja.usuario = Usuario.fromId(actor.id);
           caja.montoApertura = request.montoApertura;
           caja.abiertaEn = new Date();
           caja.estado = EstadoCaja.ABIERTA;
-          caja.numero = await this.cajaRepository.allocateNumero(manager);
+          caja.numero = numero;
           const saved = await manager.getRepository(Caja).save(caja);
           return saved.id;
         },
@@ -88,37 +102,60 @@ export class CajaService implements OnModuleInit {
     }
   }
 
+  /**
+   * Cierra la caja. ADMIN cualquier caja abierta; EMPLEADO solo la que abrió.
+   * Sin responsable de apertura acreditado, EMPLEADO no puede cerrar.
+   */
   async cerrar(
     id: number,
     request: CerrarCajaRequestDto,
-    _actor: RequestUser,
+    actor: RequestUser,
   ): Promise<CierreCajaResponseDto> {
     try {
-      const caja = await this.cajaRepository.findByIdWithUsuario(id);
-      if (!caja) {
-        this.errorHandler.throwNotFound(ERRORS.DATABASE.RECORD_NOT_FOUND, {
-          id,
-        });
-      }
-      if (caja.estado !== EstadoCaja.ABIERTA) {
-        this.errorHandler.throwBadRequest(ERRORS.CAJA.YA_CERRADA, { id });
-      }
+      const result = await this.cajaRepository.manager.transaction(
+        async (manager) => {
+          const caja = await manager
+            .getRepository(Caja)
+            .createQueryBuilder('caja')
+            .setLock('pessimistic_write')
+            .leftJoinAndSelect('caja.usuario', 'usuario')
+            .where('caja.id = :id', { id })
+            .getOne();
 
-      const montos = await this.movimientoCajaRepository.sumarPorCaja(id);
-      const montoEsperado = Number(
-        (
-          Number(caja.montoApertura) +
-          montos.ventas +
-          montos.ingresos -
-          montos.egresos
-        ).toFixed(2),
+          if (!caja) {
+            this.errorHandler.throwNotFound(ERRORS.DATABASE.RECORD_NOT_FOUND, {
+              id,
+            });
+          }
+          if (caja.estado !== EstadoCaja.ABIERTA) {
+            this.errorHandler.throwBadRequest(ERRORS.CAJA.YA_CERRADA, { id });
+          }
+
+          this.assertPuedeCerrar(caja, actor);
+
+          const montos = await this.movimientoCajaRepository.sumarPorCaja(
+            id,
+            manager,
+          );
+          const montoEsperado = Number(
+            (
+              Number(caja.montoApertura) +
+              montos.ventas +
+              montos.ingresos -
+              montos.egresos
+            ).toFixed(2),
+          );
+
+          caja.montoEsperado = montoEsperado;
+          caja.montoCierre = request.montoCierre;
+          caja.cerradaEn = new Date();
+          caja.estado = EstadoCaja.CERRADA;
+          caja.usuarioCierre = Usuario.fromId(actor.id);
+          await manager.getRepository(Caja).save(caja);
+
+          return { montoEsperado, montoCierre: request.montoCierre };
+        },
       );
-
-      caja.montoEsperado = montoEsperado;
-      caja.montoCierre = request.montoCierre;
-      caja.cerradaEn = new Date();
-      caja.estado = EstadoCaja.CERRADA;
-      await this.cajaRepository.save(caja);
 
       const cajaDto = await this.cajaMapper.entity2DTO(
         (await this.cajaRepository.findByIdWithUsuario(id))!,
@@ -126,9 +163,11 @@ export class CajaService implements OnModuleInit {
 
       return {
         caja: cajaDto,
-        montoEsperado,
-        montoCierre: request.montoCierre,
-        diferencia: Number((request.montoCierre - montoEsperado).toFixed(2)),
+        montoEsperado: result.montoEsperado,
+        montoCierre: result.montoCierre,
+        diferencia: Number(
+          (result.montoCierre - result.montoEsperado).toFixed(2),
+        ),
       };
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
@@ -284,5 +323,24 @@ export class CajaService implements OnModuleInit {
     });
 
     return movimientoRepo.save(movimiento);
+  }
+
+  /**
+   * ADMIN cierra cualquier caja. EMPLEADO solo si acredita ser el opener
+   * (`usuario.id`). Sin opener, no se inventa responsable ni se autoriza.
+   */
+  private assertPuedeCerrar(caja: Caja, actor: RequestUser): void {
+    if (actor.role === UsuarioRole.ADMIN) {
+      return;
+    }
+
+    const openerId = caja.usuario?.id;
+    if (!openerId || openerId !== actor.id) {
+      this.errorHandler.throwForbidden(ERRORS.CAJA.CIERRE_NO_AUTORIZADO, {
+        cajaId: caja.id,
+        openerId: openerId ?? null,
+        actorId: actor.id,
+      });
+    }
   }
 }

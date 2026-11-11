@@ -128,8 +128,13 @@ describe('Permisos HTTP ADMIN / EMPLEADO', () => {
     findOne: vi.fn(async () => ({ id: 1 })),
     searchMovimientos: vi.fn(async () => ({ data: [], metadata: {} })),
     searchMovimientosByCaja: vi.fn(async () => ({ data: [], metadata: {} })),
-    abrir: vi.fn(),
-    cerrar: vi.fn(),
+    abrir: vi.fn(async () => ({ id: 1, estado: 'ABIERTA' })),
+    cerrar: vi.fn(async () => ({
+      caja: { id: 1, estado: 'CERRADA' },
+      montoEsperado: 100,
+      montoCierre: 100,
+      diferencia: 0,
+    })),
     crearMovimientoManual: vi.fn(),
   };
 
@@ -237,13 +242,37 @@ describe('Permisos HTTP ADMIN / EMPLEADO', () => {
       expect(res.body.data[0].cantidad).toBe(5);
     });
 
-    it('puede consultar caja activa pero no historiales', async () => {
+    it('puede abrir caja, consultar historial y no registrar movimientos manuales', async () => {
+      await request(app.getHttpServer())
+        .post('/caja/abrir')
+        .send({ montoApertura: 1000 })
+        .expect(201);
+      expect(cajaService.abrir).toHaveBeenCalled();
+
       await request(app.getHttpServer()).get('/caja/activa').expect(200);
-      await request(app.getHttpServer()).get('/caja/search').expect(403);
-      await request(app.getHttpServer()).get('/caja/1').expect(403);
+      await request(app.getHttpServer()).get('/caja/search').expect(200);
+      await request(app.getHttpServer()).get('/caja/1').expect(200);
       await request(app.getHttpServer())
         .get('/caja/movimientos/search')
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post('/caja/movimientos')
+        .send({
+          tipo: 'INGRESO',
+          monto: 100,
+          descripcion: 'test',
+        })
         .expect(403);
+      expect(cajaService.crearMovimientoManual).not.toHaveBeenCalled();
+    });
+
+    it('puede cerrar caja vía endpoint (reglas de ownership en servicio)', async () => {
+      await request(app.getHttpServer())
+        .post('/caja/1/cerrar')
+        .send({ montoCierre: 1000 })
+        .expect(201);
+      expect(cajaService.cerrar).toHaveBeenCalled();
     });
   });
 

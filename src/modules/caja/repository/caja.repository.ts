@@ -13,10 +13,9 @@ export class CajaRepository extends Repository<Caja> {
   }
 
   private baseQuery(): SelectQueryBuilder<Caja> {
-    return this.createQueryBuilder('caja').leftJoinAndSelect(
-      'caja.usuario',
-      'usuario',
-    );
+    return this.createQueryBuilder('caja')
+      .leftJoinAndSelect('caja.usuario', 'usuario')
+      .leftJoinAndSelect('caja.usuarioCierre', 'usuarioCierre');
   }
 
   async findAbierta(): Promise<Caja | null> {

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
 import { PageDto } from '../../../common/dto/page.dto.js';
+import { buildCalendarDayRange } from '../../../common/utils/calendar-day-range.util.js';
 import {
   applySearchQueryOptions,
   applyTextSearch,
@@ -89,6 +90,16 @@ export class VentaRepository extends Repository<Venta> {
     if (request.metodoPago) {
       queryBuilder.andWhere('venta.metodoPago = :metodoPago', {
         metodoPago: request.metodoPago,
+      });
+    }
+
+    if (request.fecha) {
+      const { desde, hastaExclusivo } = buildCalendarDayRange(request.fecha);
+      queryBuilder.andWhere('venta.created_date >= :fechaDesde', {
+        fechaDesde: desde,
+      });
+      queryBuilder.andWhere('venta.created_date < :fechaHastaExclusivo', {
+        fechaHastaExclusivo: hastaExclusivo,
       });
     }
 

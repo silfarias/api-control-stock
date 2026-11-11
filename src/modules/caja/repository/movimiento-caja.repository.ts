@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  Repository,
+  SelectQueryBuilder,
+} from 'typeorm';
 import { PageDto } from '../../../common/dto/page.dto.js';
 import {
   applySearchQueryOptions,
@@ -42,12 +47,19 @@ export class MovimientoCajaRepository extends Repository<MovimientoCaja> {
     return new PageDto<MovimientoCaja>(list, count);
   }
 
-  async sumarPorCaja(cajaId: number): Promise<{
+  async sumarPorCaja(
+    cajaId: number,
+    manager?: EntityManager,
+  ): Promise<{
     ventas: number;
     ingresos: number;
     egresos: number;
   }> {
-    const rows = await this.createQueryBuilder('movimiento')
+    const repo = manager
+      ? manager.getRepository(MovimientoCaja)
+      : this;
+    const rows = await repo
+      .createQueryBuilder('movimiento')
       .innerJoin('movimiento.caja', 'caja')
       .select('movimiento.tipo', 'tipo')
       .addSelect('SUM(movimiento.monto)', 'total')

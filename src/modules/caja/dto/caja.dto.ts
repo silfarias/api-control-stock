@@ -45,8 +45,20 @@ export class CajaDTO extends CommonDTO {
   @Expose()
   estado: EstadoCaja;
 
-  @ApiProperty({ description: 'Usuario que abrió la caja', type: () => UsuarioDTO })
+  @ApiProperty({
+    description: 'Usuario que abrió la caja (responsable de apertura)',
+    type: () => UsuarioDTO,
+  })
   @Type(() => UsuarioDTO)
   @Expose()
   usuario: UsuarioDTO;
+
+  @ApiPropertyOptional({
+    description:
+      'Usuario que cerró la caja. Ausente si sigue abierta o en historial previo a este campo.',
+    type: () => UsuarioDTO,
+  })
+  @Type(() => UsuarioDTO)
+  @Expose()
+  usuarioCierre?: UsuarioDTO;
 }

@@ -198,6 +198,11 @@ export const ERRORS = {
       CODE: 'CJ04',
       MESSAGE: 'El estado de la caja no permite esta operación.',
     },
+    CIERRE_NO_AUTORIZADO: {
+      CODE: 'CJ05',
+      MESSAGE:
+        'No podés cerrar esta caja. Solo el responsable de apertura o un administrador pueden hacerlo.',
+    },
   },
 
   // Definición de errores de sesión

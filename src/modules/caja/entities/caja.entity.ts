@@ -6,9 +6,15 @@ import type { MovimientoCaja } from './movimiento-caja.entity.js';
 
 @Entity('caja')
 export class Caja extends BaseEntity {
+  /** Usuario que abrió la caja (responsable de apertura). */
   @ManyToOne(() => Usuario, { nullable: false })
   @JoinColumn({ name: 'usuario_id' })
   usuario: Usuario;
+
+  /** Usuario que cerró la caja. Null mientras esté abierta o en cierres previos a esta columna. */
+  @ManyToOne(() => Usuario, { nullable: true })
+  @JoinColumn({ name: 'usuario_cierre_id' })
+  usuarioCierre?: Usuario | null;
 
   /**
    * Número de caja visible (1, 2, 3…). Independiente del id técnico.
