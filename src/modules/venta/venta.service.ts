@@ -31,17 +31,20 @@ export class VentaService implements OnModuleInit {
     await this.ventaRepository.syncNumeracion();
   }
 
-  async findOne(id: number): Promise<VentaDTO> {
+  async findOne(id: number, viewer?: RequestUser): Promise<VentaDTO> {
     const venta = await this.ventaRepository.findByIdWithRelations(id);
     if (!venta) {
       this.errorHandler.throwNotFound(ERRORS.DATABASE.RECORD_NOT_FOUND, { id });
     }
-    return this.ventaMapper.entity2DTO(venta);
+    return this.ventaMapper.entity2DTO(venta, viewer?.role);
   }
 
-  async search(request: SearchVentaRequestDto): Promise<PageDto<VentaDTO>> {
+  async search(
+    request: SearchVentaRequestDto,
+    viewer?: RequestUser,
+  ): Promise<PageDto<VentaDTO>> {
     const page = await this.ventaRepository.search(request);
-    return this.ventaMapper.page2Dto(request, page);
+    return this.ventaMapper.page2Dto(request, page, viewer?.role);
   }
 
   /**
@@ -99,7 +102,7 @@ export class VentaService implements OnModuleInit {
         },
       );
 
-      return this.findOne(savedId);
+      return this.findOne(savedId, actor);
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);
@@ -173,7 +176,7 @@ export class VentaService implements OnModuleInit {
         await ventaRepo.save(venta);
       });
 
-      return this.findOne(id);
+      return this.findOne(id, actor);
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);

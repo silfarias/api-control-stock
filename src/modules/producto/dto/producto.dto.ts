@@ -28,9 +28,14 @@ export class ProductoDTO extends CommonDTO {
   @Expose()
   codigoBarras: string;
 
-  @ApiProperty({ description: 'Precio de costo', type: Number, example: 150.5 })
+  @ApiPropertyOptional({
+    description:
+      'Precio de costo. Solo se incluye para rol ADMIN; EMPLEADO no lo recibe.',
+    type: Number,
+    example: 150.5,
+  })
   @Expose()
-  precioCosto: number;
+  precioCosto?: number;
 
   @ApiProperty({ description: 'Precio de venta', type: Number, example: 250 })
   @Expose()

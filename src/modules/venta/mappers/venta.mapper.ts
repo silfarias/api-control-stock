@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { PageDto } from '../../../common/dto/page.dto.js';
 import { EstadoVenta } from '../../../common/enums/estado-venta.enum.js';
+import { UsuarioRole } from '../../../common/enums/usuario-role.enum.js';
 import { Producto } from '../../producto/entities/producto.entity.js';
+import { applyNestedProductoEconomicVisibility } from '../../producto/utils/producto-economic-visibility.util.js';
 import { Usuario } from '../../usuario/entities/usuario.entity.js';
 import { CreateVentaRequestDto } from '../dto/create-venta-request.dto.js';
 import { SearchVentaRequestDto } from '../dto/search-venta-request.dto.js';
@@ -18,18 +20,23 @@ export type ItemVentaConPrecio = {
 
 @Injectable()
 export class VentaMapper {
-  async entity2DTO(venta: Venta): Promise<VentaDTO> {
-    return plainToInstance(VentaDTO, venta, {
+  async entity2DTO(venta: Venta, viewerRole?: UsuarioRole): Promise<VentaDTO> {
+    const dto = plainToInstance(VentaDTO, venta, {
       excludeExtraneousValues: true,
     });
+    for (const item of dto.items ?? []) {
+      applyNestedProductoEconomicVisibility(item.producto, viewerRole);
+    }
+    return dto;
   }
 
   async page2Dto(
     request: SearchVentaRequestDto,
     page: PageDto<Venta>,
+    viewerRole?: UsuarioRole,
   ): Promise<PageDto<VentaDTO>> {
     const dtos = await Promise.all(
-      page.data.map((item) => this.entity2DTO(item)),
+      page.data.map((item) => this.entity2DTO(item, viewerRole)),
     );
     const pageDto = new PageDto<VentaDTO>(dtos, page.metadata.count);
     pageDto.metadata.setPaginationData(

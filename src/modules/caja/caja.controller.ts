@@ -43,11 +43,15 @@ export class CajaController {
   constructor(private readonly cajaService: CajaService) {}
 
   @Get('search')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth('authorization')
-  @ApiOperation({ summary: 'Buscar cajas' })
+  @ApiOperation({
+    summary: 'Buscar cajas',
+    description: 'Historial de cajas. Solo ADMIN.',
+  })
   @PaginatedResponse(CajaDTO)
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async search(
     @Query() request: SearchCajaRequestDto,
   ): Promise<PageDto<CajaDTO>> {
@@ -58,7 +62,11 @@ export class CajaController {
   @Get('activa')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('authorization')
-  @ApiOperation({ summary: 'Obtener la caja abierta actual' })
+  @ApiOperation({
+    summary: 'Obtener la caja abierta actual',
+    description:
+      'ADMIN o EMPLEADO. El empleado la usa para verificar disponibilidad al cobrar en efectivo.',
+  })
   @ApiOkResponse({ type: CajaDTO })
   @ApiNotFoundResponse({ description: 'No hay caja abierta' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
@@ -128,11 +136,15 @@ export class CajaController {
   }
 
   @Get('movimientos/search')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth('authorization')
-  @ApiOperation({ summary: 'Buscar movimientos de caja' })
+  @ApiOperation({
+    summary: 'Buscar movimientos de caja',
+    description: 'Historial administrativo de movimientos. Solo ADMIN.',
+  })
   @PaginatedResponse(MovimientoCajaDTO)
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async searchMovimientos(
     @Query() request: SearchMovimientoCajaRequestDto,
   ): Promise<PageDto<MovimientoCajaDTO>> {
@@ -141,13 +153,17 @@ export class CajaController {
   }
 
   @Get(':id/movimientos')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth('authorization')
-  @ApiOperation({ summary: 'Movimientos de una caja' })
+  @ApiOperation({
+    summary: 'Movimientos de una caja',
+    description: 'Solo ADMIN.',
+  })
   @ApiParam({ name: 'id', example: 1 })
   @PaginatedResponse(MovimientoCajaDTO)
   @ApiNotFoundResponse({ description: 'Caja no encontrada' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async movimientosByCaja(
     @Param('id', ParseIntPipe) id: number,
     @Query() request: SearchMovimientoCajaRequestDto,
@@ -157,13 +173,17 @@ export class CajaController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth('authorization')
-  @ApiOperation({ summary: 'Obtener caja por ID' })
+  @ApiOperation({
+    summary: 'Obtener caja por ID',
+    description: 'Detalle de una caja (incl. cerradas). Solo ADMIN.',
+  })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({ type: CajaDTO })
   @ApiNotFoundResponse({ description: 'No encontrada' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async findOne(@Param('id', ParseIntPipe) id: number): Promise<CajaDTO> {
     return this.cajaService.findOne(id);
   }

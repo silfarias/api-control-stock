@@ -41,11 +41,15 @@ export class CompraController {
   constructor(private readonly compraService: CompraService) {}
 
   @Get('search')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth('authorization')
-  @ApiOperation({ summary: 'Buscar compras' })
+  @ApiOperation({
+    summary: 'Buscar compras',
+    description: 'Solo ADMIN. Incluye costos unitarios y subtotales de compra.',
+  })
   @PaginatedResponse(CompraDTO)
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async search(
     @Query() request: SearchCompraRequestDto,
   ): Promise<PageDto<CompraDTO>> {
@@ -133,13 +137,17 @@ export class CompraController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth('authorization')
-  @ApiOperation({ summary: 'Obtener compra por ID' })
+  @ApiOperation({
+    summary: 'Obtener compra por ID',
+    description: 'Solo ADMIN. Incluye costos unitarios y subtotales de compra.',
+  })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({ type: CompraDTO })
   @ApiNotFoundResponse({ description: 'No encontrada' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async findOne(@Param('id', ParseIntPipe) id: number): Promise<CompraDTO> {
     return this.compraService.findOne(id);
   }

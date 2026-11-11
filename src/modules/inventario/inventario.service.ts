@@ -44,12 +44,18 @@ export class InventarioService {
     private readonly errorHandler: ErrorHandlerService,
   ) {}
 
-  async search(request: SearchStockRequestDto): Promise<PageDto<StockDTO>> {
+  async search(
+    request: SearchStockRequestDto,
+    viewer?: RequestUser,
+  ): Promise<PageDto<StockDTO>> {
     const page = await this.stockRepository.search(request);
-    return this.stockMapper.page2Dto(request, page);
+    return this.stockMapper.page2Dto(request, page, viewer?.role);
   }
 
-  async findByProductoId(productoId: number): Promise<StockDTO> {
+  async findByProductoId(
+    productoId: number,
+    viewer?: RequestUser,
+  ): Promise<StockDTO> {
     await this.getEntity.findById(Producto, productoId);
     const stock = await this.stockRepository.findByProductoId(productoId);
     if (!stock) {
@@ -57,23 +63,25 @@ export class InventarioService {
         productoId,
       });
     }
-    return this.stockMapper.entity2DTO(stock);
+    return this.stockMapper.entity2DTO(stock, viewer?.role);
   }
 
   async searchMovimientos(
     request: SearchMovimientoStockRequestDto,
+    viewer?: RequestUser,
   ): Promise<PageDto<MovimientoStockDTO>> {
     const page = await this.movimientoStockRepository.search(request);
-    return this.movimientoStockMapper.page2Dto(request, page);
+    return this.movimientoStockMapper.page2Dto(request, page, viewer?.role);
   }
 
   async searchMovimientosByProducto(
     productoId: number,
     request: SearchMovimientoStockRequestDto,
+    viewer?: RequestUser,
   ): Promise<PageDto<MovimientoStockDTO>> {
     await this.getEntity.findById(Producto, productoId);
     request.productoId = productoId;
-    return this.searchMovimientos(request);
+    return this.searchMovimientos(request, viewer);
   }
 
   /**
@@ -178,9 +186,10 @@ export class InventarioService {
       );
 
       return {
-        stock: await this.stockMapper.entity2DTO(result.stock),
+        stock: await this.stockMapper.entity2DTO(result.stock, actor.role),
         movimiento: await this.movimientoStockMapper.entity2DTO(
           result.movimiento,
+          actor.role,
         ),
       };
     } catch (error) {

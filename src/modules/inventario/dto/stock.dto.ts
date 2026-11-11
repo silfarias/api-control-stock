@@ -8,7 +8,11 @@ export class StockDTO extends CommonDTO {
   @Expose()
   cantidad: number;
 
-  @ApiProperty({ description: 'Producto asociado', type: () => ProductoDTO })
+  @ApiProperty({
+    description:
+      'Producto asociado. `precioCosto` solo viene para ADMIN.',
+    type: () => ProductoDTO,
+  })
   @Type(() => ProductoDTO)
   @Expose()
   producto: ProductoDTO;

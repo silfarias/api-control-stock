@@ -47,7 +47,10 @@ export class MovimientoStockDTO extends CommonDTO {
   @Expose()
   descripcion?: string;
 
-  @ApiProperty({ description: 'Producto afectado', type: () => ProductoDTO })
+  @ApiProperty({
+    description: 'Producto afectado. `precioCosto` solo viene para ADMIN.',
+    type: () => ProductoDTO,
+  })
   @Type(() => ProductoDTO)
   @Expose()
   producto: ProductoDTO;

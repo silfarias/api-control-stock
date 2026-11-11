@@ -1,29 +1,35 @@
 import { Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { PageDto } from '../../../common/dto/page.dto.js';
+import { UsuarioRole } from '../../../common/enums/usuario-role.enum.js';
 import { Categoria } from '../../categoria/entities/categoria.entity.js';
 import { CreateProductoRequestDto } from '../dto/create-producto-request.dto.js';
 import { ProductoDTO } from '../dto/producto.dto.js';
 import { SearchProductoRequestDto } from '../dto/search-producto-request.dto.js';
 import { UpdateProductoRequestDto } from '../dto/update-producto-request.dto.js';
 import { Producto } from '../entities/producto.entity.js';
+import { applyProductoEconomicVisibility } from '../utils/producto-economic-visibility.util.js';
 
 @Injectable()
 export class ProductoMapper {
-  async entity2DTO(producto: Producto): Promise<ProductoDTO> {
+  async entity2DTO(
+    producto: Producto,
+    viewerRole?: UsuarioRole,
+  ): Promise<ProductoDTO> {
     const dto = plainToInstance(ProductoDTO, producto, {
       excludeExtraneousValues: true,
     });
     dto.stockCantidad = producto.stock?.cantidad ?? 0;
-    return dto;
+    return applyProductoEconomicVisibility(dto, viewerRole);
   }
 
   async page2Dto(
     request: SearchProductoRequestDto,
     page: PageDto<Producto>,
+    viewerRole?: UsuarioRole,
   ): Promise<PageDto<ProductoDTO>> {
     const dtos = await Promise.all(
-      page.data.map((item) => this.entity2DTO(item)),
+      page.data.map((item) => this.entity2DTO(item, viewerRole)),
     );
     const pageDto = new PageDto<ProductoDTO>(dtos, page.metadata.count);
     pageDto.metadata.setPaginationData(

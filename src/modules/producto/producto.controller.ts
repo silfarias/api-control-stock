@@ -48,7 +48,7 @@ export class ProductoController {
   @ApiOperation({
     summary: 'Buscar productos',
     description:
-      'Busca productos con filtros (id, nombre, codigo, codigoBarras, categoriaId), texto libre `q` y paginación. `nombre`, `codigo`, `codigoBarras` y `q` coinciden por fragmento. Requiere autenticación (ADMIN o EMPLEADO).',
+      'Busca productos con filtros (id, nombre, codigo, codigoBarras, categoriaId), texto libre `q` y paginación. `nombre`, `codigo`, `codigoBarras` y `q` coinciden por fragmento. ADMIN recibe precioCosto; EMPLEADO no.',
   })
   @PaginatedResponse(ProductoDTO)
   @ApiBadRequestResponse({
@@ -56,10 +56,11 @@ export class ProductoController {
   })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async search(
+    @Request() req: { user: RequestUser },
     @Query() request: SearchProductoRequestDto,
   ): Promise<PageDto<ProductoDTO>> {
-    const req = plainToInstance(SearchProductoRequestDto, request);
-    return this.productoService.search(req);
+    const searchReq = plainToInstance(SearchProductoRequestDto, request);
+    return this.productoService.search(searchReq, req.user);
   }
 
   @Post('bulk')
@@ -133,10 +134,11 @@ export class ProductoController {
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async update(
+    @Request() req: { user: RequestUser },
     @Param('id', ParseIntPipe) id: number,
     @Body() request: UpdateProductoRequestDto,
   ): Promise<ProductoDTO> {
-    return this.productoService.update(id, request);
+    return this.productoService.update(id, request, req.user);
   }
 
   @Get(':id')
@@ -145,15 +147,18 @@ export class ProductoController {
   @ApiOperation({
     summary: 'Obtener producto por ID',
     description:
-      'Devuelve un producto con su categoría. Requiere autenticación (ADMIN o EMPLEADO).',
+      'Devuelve un producto con su categoría. ADMIN recibe precioCosto; EMPLEADO no.',
   })
   @ApiParam({ name: 'id', required: true, description: 'ID del producto', example: 1 })
   @ApiOkResponse({ type: ProductoDTO, description: 'Producto encontrado' })
   @ApiBadRequestResponse({ description: 'Solicitud incorrecta' })
   @ApiNotFoundResponse({ description: 'No se encontró el producto' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
-  async findOne(@Param('id', ParseIntPipe) id: number): Promise<ProductoDTO> {
-    return this.productoService.findOne(id);
+  async findOne(
+    @Request() req: { user: RequestUser },
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<ProductoDTO> {
+    return this.productoService.findOne(id, req.user);
   }
 
   @Delete(':id')

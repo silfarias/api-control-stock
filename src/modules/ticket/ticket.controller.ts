@@ -3,12 +3,14 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
+import { AdminGuard } from '../../common/guards/admin.guard.js';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 import { TicketDTO } from './dto/ticket.dto.js';
 import { UpdateTicketRequestDto } from './dto/update-ticket-request.dto.js';
@@ -34,10 +36,11 @@ export class TicketController {
   }
 
   @Patch()
+  @UseGuards(AdminGuard)
   @ApiOperation({
     summary: 'Actualizar configuración del ticket',
     description:
-      'Actualización parcial. Los campos ausentes se conservan. Se ignoran id, fechas y campos desconocidos. ADMIN o EMPLEADO.',
+      'Actualización parcial. Los campos ausentes se conservan. Se ignoran id, fechas y campos desconocidos. Solo ADMIN.',
   })
   @ApiBody({ type: UpdateTicketRequestDto })
   @ApiOkResponse({ type: TicketDTO })
@@ -45,6 +48,7 @@ export class TicketController {
     description:
       'paperMm distinto de 48, 58, 80 o 90 (TK01), o un texto supera el máximo',
   })
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   update(@Body() body: UpdateTicketRequestDto): Promise<TicketDTO> {
     const dto = plainToInstance(UpdateTicketRequestDto, body);
     return this.ticketService.update(dto);

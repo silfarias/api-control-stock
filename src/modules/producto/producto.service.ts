@@ -26,19 +26,20 @@ export class ProductoService {
     private readonly errorHandler: ErrorHandlerService,
   ) {}
 
-  async findOne(id: number): Promise<ProductoDTO> {
+  async findOne(id: number, viewer?: RequestUser): Promise<ProductoDTO> {
     const producto = await this.getEntity.findById(Producto, id, {
       categoria: true,
       stock: true,
     });
-    return this.productoMapper.entity2DTO(producto);
+    return this.productoMapper.entity2DTO(producto, viewer?.role);
   }
 
   async search(
     request: SearchProductoRequestDto,
+    viewer?: RequestUser,
   ): Promise<PageDto<ProductoDTO>> {
     const page = await this.productoRepository.search(request);
-    return this.productoMapper.page2Dto(request, page);
+    return this.productoMapper.page2Dto(request, page, viewer?.role);
   }
 
   async create(
@@ -64,7 +65,7 @@ export class ProductoService {
         },
       );
 
-      return this.findOne(savedId);
+      return this.findOne(savedId, actor);
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);
@@ -108,7 +109,7 @@ export class ProductoService {
         },
       );
 
-      return Promise.all(ids.map((id) => this.findOne(id)));
+      return Promise.all(ids.map((id) => this.findOne(id, actor)));
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);
@@ -118,6 +119,7 @@ export class ProductoService {
   async update(
     id: number,
     request: UpdateProductoRequestDto,
+    viewer?: RequestUser,
   ): Promise<ProductoDTO> {
     try {
       const producto = await this.getEntity.findById(Producto, id, {
@@ -133,7 +135,7 @@ export class ProductoService {
         request,
       );
       await this.productoRepository.save(updated);
-      return this.findOne(id);
+      return this.findOne(id, viewer);
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);

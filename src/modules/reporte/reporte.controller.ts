@@ -1,12 +1,14 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
+import { AdminGuard } from '../../common/guards/admin.guard.js';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 import { FiltroReporteDto } from './dto/filtro-reporte.dto.js';
 import { ReporteInventarioResponseDto } from './dto/reporte-inventario-response.dto.js';
@@ -18,9 +20,10 @@ import { ReporteService } from './reporte.service.js';
 
 @ApiTags('Reporte')
 @Controller('reporte')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, AdminGuard)
 @ApiBearerAuth('authorization')
 @ApiUnauthorizedResponse({ description: 'No autorizado' })
+@ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
 export class ReporteController {
   constructor(private readonly reporteService: ReporteService) {}
 
@@ -28,7 +31,7 @@ export class ReporteController {
   @ApiOperation({
     summary: 'Resumen de ventas',
     description:
-      'Totales de ventas confirmadas (cantidad, ingresos, unidades, ticket promedio) y desglose por método de pago. Requiere autenticación (ADMIN o EMPLEADO). `fecha` filtra un día exacto y tiene prioridad sobre `desde`/`hasta`. Fechas inclusivas sobre created_date en zona horaria de la DB (DB_TIMEZONE, típ. -03:00).',
+      'Totales de ventas confirmadas (cantidad, ingresos, unidades, ticket promedio) y desglose por método de pago. Solo ADMIN. `fecha` filtra un día exacto y tiene prioridad sobre `desde`/`hasta`. Fechas inclusivas sobre created_date en zona horaria de la DB (DB_TIMEZONE, típ. -03:00).',
   })
   @ApiOkResponse({ type: ReporteVentasResponseDto })
   async ventas(
@@ -42,7 +45,7 @@ export class ReporteController {
   @ApiOperation({
     summary: 'Ventas por día',
     description:
-      'Cantidad e ingresos agrupados por día. Requiere autenticación (ADMIN o EMPLEADO). Acepta `fecha` (día exacto) o el rango `desde`/`hasta`.',
+      'Cantidad e ingresos agrupados por día. Solo ADMIN. Acepta `fecha` (día exacto) o el rango `desde`/`hasta`.',
   })
   @ApiOkResponse({ type: [ReporteVentasDiarioItemDto] })
   async ventasDiario(
@@ -56,7 +59,7 @@ export class ReporteController {
   @ApiOperation({
     summary: 'Productos más vendidos',
     description:
-      'Ranking por unidades vendidas (límite configurable). Requiere autenticación (ADMIN o EMPLEADO). Acepta `fecha` (día exacto) o el rango `desde`/`hasta`.',
+      'Ranking por unidades vendidas (límite configurable). Solo ADMIN. Acepta `fecha` (día exacto) o el rango `desde`/`hasta`.',
   })
   @ApiOkResponse({ type: [ReporteProductoTopItemDto] })
   async productosTop(
@@ -70,7 +73,7 @@ export class ReporteController {
   @ApiOperation({
     summary: 'Stock bajo',
     description:
-      'Productos con cantidad menor o igual al mínimo configurado. Requiere autenticación (ADMIN o EMPLEADO).',
+      'Productos con cantidad menor o igual al mínimo configurado. Solo ADMIN.',
   })
   @ApiOkResponse({ type: [ReporteStockBajoItemDto] })
   async stockBajo(
@@ -84,7 +87,7 @@ export class ReporteController {
   @ApiOperation({
     summary: 'Valorización de inventario',
     description:
-      'Stock actual valorizado a costo y a precio de venta. Requiere autenticación (ADMIN o EMPLEADO).',
+      'Stock actual valorizado a costo y a precio de venta. Solo ADMIN.',
   })
   @ApiOkResponse({ type: ReporteInventarioResponseDto })
   async inventario(

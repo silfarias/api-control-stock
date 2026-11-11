@@ -46,16 +46,17 @@ export class InventarioController {
   @ApiOperation({
     summary: 'Buscar stocks',
     description:
-      'Lista paginada de stock por producto. Requiere autenticación (ADMIN o EMPLEADO).',
+      'Lista paginada de stock por producto. ADMIN o EMPLEADO. El producto anidado omite precioCosto para EMPLEADO.',
   })
   @PaginatedResponse(StockDTO)
   @ApiBadRequestResponse({ description: 'Parámetros inválidos' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async search(
+    @Request() req: { user: RequestUser },
     @Query() request: SearchStockRequestDto,
   ): Promise<PageDto<StockDTO>> {
-    const req = plainToInstance(SearchStockRequestDto, request);
-    return this.inventarioService.search(req);
+    const searchReq = plainToInstance(SearchStockRequestDto, request);
+    return this.inventarioService.search(searchReq, req.user);
   }
 
   @Get('movimientos/search')
@@ -64,16 +65,17 @@ export class InventarioController {
   @ApiOperation({
     summary: 'Buscar movimientos de stock',
     description:
-      'Lista paginada de movimientos (historial inmutable). Filtros: productoId, tipo, usuarioId, q. Requiere autenticación (ADMIN o EMPLEADO).',
+      'Lista paginada de movimientos (historial inmutable). Filtros: productoId, tipo, usuarioId, q. ADMIN o EMPLEADO. El producto anidado omite precioCosto para EMPLEADO.',
   })
   @PaginatedResponse(MovimientoStockDTO)
   @ApiBadRequestResponse({ description: 'Parámetros inválidos' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async searchMovimientos(
+    @Request() req: { user: RequestUser },
     @Query() request: SearchMovimientoStockRequestDto,
   ): Promise<PageDto<MovimientoStockDTO>> {
-    const req = plainToInstance(SearchMovimientoStockRequestDto, request);
-    return this.inventarioService.searchMovimientos(req);
+    const searchReq = plainToInstance(SearchMovimientoStockRequestDto, request);
+    return this.inventarioService.searchMovimientos(searchReq, req.user);
   }
 
   @Get('producto/:productoId')
@@ -82,16 +84,17 @@ export class InventarioController {
   @ApiOperation({
     summary: 'Obtener stock por producto',
     description:
-      'Devuelve el stock actual de un producto. Requiere autenticación (ADMIN o EMPLEADO).',
+      'Devuelve el stock actual de un producto. ADMIN o EMPLEADO. El producto anidado omite precioCosto para EMPLEADO.',
   })
   @ApiParam({ name: 'productoId', description: 'ID del producto', example: 1 })
   @ApiOkResponse({ type: StockDTO, description: 'Stock encontrado' })
   @ApiNotFoundResponse({ description: 'Producto o stock no encontrado' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async findByProducto(
+    @Request() req: { user: RequestUser },
     @Param('productoId', ParseIntPipe) productoId: number,
   ): Promise<StockDTO> {
-    return this.inventarioService.findByProductoId(productoId);
+    return this.inventarioService.findByProductoId(productoId, req.user);
   }
 
   @Get('producto/:productoId/movimientos')
@@ -100,7 +103,7 @@ export class InventarioController {
   @ApiOperation({
     summary: 'Movimientos de un producto',
     description:
-      'Historial de movimientos de stock de un producto. Requiere autenticación (ADMIN o EMPLEADO).',
+      'Historial de movimientos de stock de un producto. ADMIN o EMPLEADO. El producto anidado omite precioCosto para EMPLEADO.',
   })
   @ApiParam({ name: 'productoId', description: 'ID del producto', example: 1 })
   @PaginatedResponse(MovimientoStockDTO)
@@ -108,11 +111,16 @@ export class InventarioController {
   @ApiBadRequestResponse({ description: 'Parámetros inválidos' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async movimientosByProducto(
+    @Request() req: { user: RequestUser },
     @Param('productoId', ParseIntPipe) productoId: number,
     @Query() request: SearchMovimientoStockRequestDto,
   ): Promise<PageDto<MovimientoStockDTO>> {
-    const req = plainToInstance(SearchMovimientoStockRequestDto, request);
-    return this.inventarioService.searchMovimientosByProducto(productoId, req);
+    const searchReq = plainToInstance(SearchMovimientoStockRequestDto, request);
+    return this.inventarioService.searchMovimientosByProducto(
+      productoId,
+      searchReq,
+      req.user,
+    );
   }
 
   @Post('ajustes')

@@ -20,7 +20,10 @@ export class ItemVentaDTO extends CommonDTO {
   @Expose()
   subtotal: number;
 
-  @ApiProperty({ description: 'Producto', type: () => ProductoDTO })
+  @ApiProperty({
+    description: 'Producto. `precioCosto` solo viene para ADMIN.',
+    type: () => ProductoDTO,
+  })
   @Type(() => ProductoDTO)
   @Expose()
   producto: ProductoDTO;

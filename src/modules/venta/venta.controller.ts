@@ -13,6 +13,7 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -23,6 +24,7 @@ import {
 import { plainToInstance } from 'class-transformer';
 import { PaginatedResponse } from '../../common/decorators/paginated-response.decorator.js';
 import { PageDto } from '../../common/dto/page.dto.js';
+import { AdminGuard } from '../../common/guards/admin.guard.js';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 import { RequestUser } from '../../common/interfaces/jwt.interface.js';
 import { CreateVentaRequestDto } from './dto/create-venta-request.dto.js';
@@ -38,14 +40,19 @@ export class VentaController {
   @Get('search')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('authorization')
-  @ApiOperation({ summary: 'Buscar ventas' })
+  @ApiOperation({
+    summary: 'Buscar ventas',
+    description:
+      'ADMIN o EMPLEADO. Los productos anidados omiten precioCosto para EMPLEADO.',
+  })
   @PaginatedResponse(VentaDTO)
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async search(
+    @Request() req: { user: RequestUser },
     @Query() request: SearchVentaRequestDto,
   ): Promise<PageDto<VentaDTO>> {
-    const req = plainToInstance(SearchVentaRequestDto, request);
-    return this.ventaService.search(req);
+    const searchReq = plainToInstance(SearchVentaRequestDto, request);
+    return this.ventaService.search(searchReq, req.user);
   }
 
   @Post()
@@ -54,7 +61,7 @@ export class VentaController {
   @ApiOperation({
     summary: 'Registrar venta',
     description:
-      'Crea la venta, calcula precios desde producto.precioVenta, descuenta stock y genera movimientos VENTA en una sola transacción. Si metodoPago es EFECTIVO, requiere caja abierta y registra movimiento de caja. El cliente no envía precios ni totales.',
+      'Crea la venta, calcula precios desde producto.precioVenta, descuenta stock y genera movimientos VENTA en una sola transacción. Si metodoPago es EFECTIVO, requiere caja abierta y registra movimiento de caja. El cliente no envía precios ni totales. ADMIN o EMPLEADO.',
   })
   @ApiBody({ type: CreateVentaRequestDto })
   @ApiOkResponse({ type: VentaDTO, description: 'Venta confirmada' })
@@ -70,12 +77,12 @@ export class VentaController {
   }
 
   @Post(':id/cancelar')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth('authorization')
   @ApiOperation({
     summary: 'Anular venta confirmada',
     description:
-      'Pasa la venta a CANCELADA, devuelve el stock y, si el pago fue en efectivo, registra un egreso. Si la caja que cobró sigue abierta, el egreso va a esa caja. Si ya cerró, va a la caja abierta actual. El número de comprobante no cambia. Requiere autenticación (ADMIN o EMPLEADO).',
+      'Pasa la venta a CANCELADA, devuelve el stock y, si el pago fue en efectivo, registra un egreso. Si la caja que cobró sigue abierta, el egreso va a esa caja. Si ya cerró, va a la caja abierta actual. El número de comprobante no cambia. Solo ADMIN.',
   })
   @ApiParam({ name: 'id', example: 1, description: 'Id técnico de la venta' })
   @ApiOkResponse({ type: VentaDTO, description: 'Venta anulada' })
@@ -84,6 +91,7 @@ export class VentaController {
   })
   @ApiNotFoundResponse({ description: 'No encontrada' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async cancelar(
     @Request() req: { user: RequestUser },
     @Param('id', ParseIntPipe) id: number,
@@ -94,12 +102,19 @@ export class VentaController {
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('authorization')
-  @ApiOperation({ summary: 'Obtener venta por ID' })
+  @ApiOperation({
+    summary: 'Obtener venta por ID',
+    description:
+      'ADMIN o EMPLEADO. Los productos anidados omiten precioCosto para EMPLEADO.',
+  })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({ type: VentaDTO })
   @ApiNotFoundResponse({ description: 'No encontrada' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
-  async findOne(@Param('id', ParseIntPipe) id: number): Promise<VentaDTO> {
-    return this.ventaService.findOne(id);
+  async findOne(
+    @Request() req: { user: RequestUser },
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<VentaDTO> {
+    return this.ventaService.findOne(id, req.user);
   }
 }
