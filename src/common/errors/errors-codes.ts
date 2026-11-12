@@ -144,6 +144,41 @@ export const ERRORS = {
     },
   },
 
+  SUCURSAL: {
+    NOT_FOUND: {
+      CODE: 'SU01',
+      MESSAGE: 'La sucursal no existe.',
+    },
+    INACTIVA: {
+      CODE: 'SU02',
+      MESSAGE: 'La sucursal está inactiva.',
+    },
+    ACCESO_DENEGADO: {
+      CODE: 'SU03',
+      MESSAGE: 'No tenés acceso a esta sucursal.',
+    },
+    CODIGO_DUPLICADO: {
+      CODE: 'SU04',
+      MESSAGE: 'Ya existe una sucursal con ese código.',
+    },
+    NO_ELIMINABLE: {
+      CODE: 'SU05',
+      MESSAGE: 'La sucursal no puede eliminarse.',
+    },
+    HEADER_REQUERIDO: {
+      CODE: 'SU06',
+      MESSAGE: 'Falta el header x-sucursal-id.',
+    },
+    HEADER_INVALIDO: {
+      CODE: 'SU07',
+      MESSAGE: 'El header x-sucursal-id no es válido.',
+    },
+    RECURSO_OTRA_SUCURSAL: {
+      CODE: 'SU08',
+      MESSAGE: 'El registro pertenece a otra sucursal.',
+    },
+  },
+
   COMPRA: {
     YA_CONFIRMADA: {
       CODE: 'CO01',
@@ -156,6 +191,29 @@ export const ERRORS = {
     ESTADO_INVALIDO: {
       CODE: 'CO03',
       MESSAGE: 'El estado de la compra no permite esta operación.',
+    },
+  },
+
+  TRANSFERENCIA: {
+    YA_CONFIRMADA: {
+      CODE: 'TR01',
+      MESSAGE: 'La transferencia ya está confirmada y no puede modificarse.',
+    },
+    SIN_ITEMS: {
+      CODE: 'TR02',
+      MESSAGE: 'La transferencia debe tener al menos un ítem.',
+    },
+    ESTADO_INVALIDO: {
+      CODE: 'TR03',
+      MESSAGE: 'El estado de la transferencia no permite esta operación.',
+    },
+    MISMO_ORIGEN_DESTINO: {
+      CODE: 'TR04',
+      MESSAGE: 'La sucursal de origen y la de destino deben ser distintas.',
+    },
+    PRODUCTO_DUPLICADO: {
+      CODE: 'TR05',
+      MESSAGE: 'La transferencia tiene el mismo producto repetido en más de un ítem.',
     },
   },
 
@@ -184,11 +242,11 @@ export const ERRORS = {
   CAJA: {
     YA_ABIERTA: {
       CODE: 'CJ01',
-      MESSAGE: 'Ya existe una caja abierta.',
+      MESSAGE: 'Ya existe una caja abierta en esta sucursal.',
     },
     NO_ABIERTA: {
       CODE: 'CJ02',
-      MESSAGE: 'No hay una caja abierta.',
+      MESSAGE: 'No hay una caja abierta en esta sucursal.',
     },
     YA_CERRADA: {
       CODE: 'CJ03',

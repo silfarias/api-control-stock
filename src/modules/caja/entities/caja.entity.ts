@@ -1,11 +1,39 @@
-import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 import { EstadoCaja } from '../../../common/enums/estado-caja.enum.js';
 import { BaseEntity } from '../../../common/models/baseentity.js';
+import { Sucursal } from '../../sucursal/entities/sucursal.entity.js';
 import { Usuario } from '../../usuario/entities/usuario.entity.js';
 import type { MovimientoCaja } from './movimiento-caja.entity.js';
 
 @Entity('caja')
 export class Caja extends BaseEntity {
+  /** Sucursal a la que pertenece la caja. Solo puede haber UNA caja ABIERTA por sucursal. */
+  @ManyToOne(() => Sucursal, { nullable: false })
+  @JoinColumn({
+    name: 'sucursal_id',
+    foreignKeyConstraintName: 'FK_caja_sucursal',
+  })
+  sucursal: Sucursal;
+
+  /**
+   * Columna GENERADA (STORED) por la migración Multisucursal:
+   * CASE WHEN estado = 'ABIERTA' THEN sucursal_id ELSE NULL END.
+   * Con el UNIQUE uq_caja_abierta_por_sucursal garantiza a nivel DB una sola caja abierta
+   * por sucursal (los NULL de cajas cerradas no colisionan). Solo lectura: nunca se escribe.
+   */
+  @Index('uq_caja_abierta_por_sucursal', { unique: true })
+  @Column({
+    name: 'abierta_lock',
+    type: 'int',
+    nullable: true,
+    asExpression: "CASE WHEN estado = 'ABIERTA' THEN sucursal_id ELSE NULL END",
+    generatedType: 'STORED',
+    insert: false,
+    update: false,
+    select: false,
+  })
+  abiertaLock?: number | null;
+
   /** Usuario que abrió la caja (responsable de apertura). */
   @ManyToOne(() => Usuario, { nullable: false })
   @JoinColumn({ name: 'usuario_id' })
@@ -18,6 +46,7 @@ export class Caja extends BaseEntity {
 
   /**
    * Número de caja visible (1, 2, 3…). Independiente del id técnico.
+   * La numeración es GLOBAL (no se reinicia por sucursal).
    * Nullable solo para poder agregar la columna sobre cajas ya existentes;
    * la apertura siempre lo asigna y el arranque rellena los nulos con el id.
    */

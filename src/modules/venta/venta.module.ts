@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CajaModule } from '../caja/caja.module.js';
 import { InventarioModule } from '../inventario/inventario.module.js';
+import { SucursalModule } from '../sucursal/sucursal.module.js';
 import { ItemVenta } from './entities/item-venta.entity.js';
 import { VentaNumeracion } from './entities/venta-numeracion.entity.js';
 import { Venta } from './entities/venta.entity.js';
@@ -15,6 +16,7 @@ import { VentaService } from './venta.service.js';
     TypeOrmModule.forFeature([Venta, ItemVenta, VentaNumeracion]),
     InventarioModule,
     CajaModule,
+    SucursalModule,
   ],
   controllers: [VentaController],
   providers: [VentaService, VentaMapper, VentaRepository],

@@ -7,6 +7,7 @@ import { UsuarioRole } from '../../common/enums/usuario-role.enum.js';
 import { ERRORS } from '../../common/errors/errors-codes.js';
 import { RequestUser } from '../../common/interfaces/jwt.interface.js';
 import { ErrorHandlerService } from '../../common/services/error-handler.service.js';
+import { SucursalAccessService } from '../sucursal/sucursal-access.service.js';
 import { Usuario } from '../usuario/entities/usuario.entity.js';
 import { AbrirCajaRequestDto } from './dto/abrir-caja-request.dto.js';
 import { CajaDTO } from './dto/caja.dto.js';
@@ -23,6 +24,17 @@ import { MovimientoCajaMapper } from './mappers/movimiento-caja.mapper.js';
 import { CajaRepository } from './repository/caja.repository.js';
 import { MovimientoCajaRepository } from './repository/movimiento-caja.repository.js';
 
+/** Nombre del UNIQUE que garantiza una sola caja abierta por sucursal. */
+const UQ_CAJA_ABIERTA_POR_SUCURSAL = 'uq_caja_abierta_por_sucursal';
+
+/**
+ * Cajas multisucursal.
+ *
+ * - Una caja ABIERTA por sucursal (chequeo en servicio + UNIQUE sobre la columna generada
+ *   `abierta_lock` como red de seguridad en la DB).
+ * - Numeración: el `numero` de caja es GLOBAL (un único contador `caja_numeracion`
+ *   compartido por todas las sucursales); no se reinicia por sucursal.
+ */
 @Injectable()
 export class CajaService implements OnModuleInit {
   constructor(
@@ -31,45 +43,57 @@ export class CajaService implements OnModuleInit {
     private readonly cajaMapper: CajaMapper,
     private readonly movimientoCajaMapper: MovimientoCajaMapper,
     private readonly errorHandler: ErrorHandlerService,
+    private readonly sucursalAccess: SucursalAccessService,
   ) {}
 
   async onModuleInit(): Promise<void> {
     await this.cajaRepository.syncNumeracion();
   }
 
-  async search(request: SearchCajaRequestDto): Promise<PageDto<CajaDTO>> {
-    const page = await this.cajaRepository.search(request);
+  /** Cajas de la sucursal operativa (header `x-sucursal-id`). */
+  async search(
+    request: SearchCajaRequestDto,
+    sucursalId: number,
+  ): Promise<PageDto<CajaDTO>> {
+    const page = await this.cajaRepository.search(request, sucursalId);
     return this.cajaMapper.page2Dto(request, page);
   }
 
-  async findOne(id: number): Promise<CajaDTO> {
-    const caja = await this.cajaRepository.findByIdWithUsuario(id);
-    if (!caja) {
-      this.errorHandler.throwNotFound(ERRORS.DATABASE.RECORD_NOT_FOUND, { id });
-    }
+  /**
+   * Detalle de una caja. ADMIN: cualquiera; EMPLEADO: solo de sucursales asignadas.
+   * No requiere header: la sucursal sale de la propia caja.
+   */
+  async findOne(id: number, viewer: RequestUser): Promise<CajaDTO> {
+    const caja = await this.getCajaConAcceso(id, viewer);
     return this.cajaMapper.entity2DTO(caja);
   }
 
-  async getAbierta(): Promise<CajaDTO> {
-    const caja = await this.cajaRepository.findAbierta();
+  /** Caja abierta de la sucursal operativa. */
+  async getAbierta(sucursalId: number): Promise<CajaDTO> {
+    const caja = await this.cajaRepository.findAbierta(sucursalId);
     if (!caja) {
-      this.errorHandler.throwNotFound(ERRORS.CAJA.NO_ABIERTA);
+      this.errorHandler.throwNotFound(ERRORS.CAJA.NO_ABIERTA, { sucursalId });
     }
     return this.cajaMapper.entity2DTO(caja);
   }
 
   /**
-   * Abre caja con monto inicial. Serializa aperturas concurrentes con el
-   * FOR UPDATE de numeración + chequeo de ABIERTA dentro de la misma TX.
+   * Abre caja con monto inicial en la sucursal operativa.
+   * Serializa aperturas concurrentes con el FOR UPDATE de numeración (global) +
+   * chequeo de ABIERTA en ESA sucursal dentro de la misma TX. Si aun así dos aperturas
+   * colisionan, el UNIQUE `uq_caja_abierta_por_sucursal` lo rechaza y se traduce a YA_ABIERTA.
    */
   async abrir(
     request: AbrirCajaRequestDto,
     actor: RequestUser,
+    sucursalId: number,
   ): Promise<CajaDTO> {
     try {
+      const sucursal = await this.sucursalAccess.assertActiva(sucursalId);
+
       const savedId = await this.cajaRepository.manager.transaction(
         async (manager) => {
-          // Lock de numeración: serializa aperturas concurrentes.
+          // Lock de numeración (GLOBAL): serializa aperturas concurrentes.
           const numero = await this.cajaRepository.allocateNumero(manager);
 
           const abierta = await manager
@@ -77,16 +101,16 @@ export class CajaService implements OnModuleInit {
             .createQueryBuilder('caja')
             .setLock('pessimistic_write')
             .where('caja.estado = :estado', { estado: EstadoCaja.ABIERTA })
+            .andWhere('caja.sucursal_id = :sucursalId', { sucursalId })
             .getOne();
 
           if (abierta) {
-            this.errorHandler.throwBadRequest(ERRORS.CAJA.YA_ABIERTA, {
-              cajaId: abierta.id,
-            });
+            this.throwYaAbierta(abierta.id, sucursalId, sucursal.nombre);
           }
 
           const caja = new Caja();
           caja.usuario = Usuario.fromId(actor.id);
+          caja.sucursal = sucursal;
           caja.montoApertura = request.montoApertura;
           caja.abiertaEn = new Date();
           caja.estado = EstadoCaja.ABIERTA;
@@ -95,15 +119,20 @@ export class CajaService implements OnModuleInit {
           return saved.id;
         },
       );
-      return this.findOne(savedId);
+      const creada = await this.cajaRepository.findByIdWithUsuario(savedId);
+      return this.cajaMapper.entity2DTO(creada!);
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
+      if (this.isDuplicateCajaAbierta(error)) {
+        this.throwYaAbierta(undefined, sucursalId);
+      }
       this.errorHandler.handleError(error);
     }
   }
 
   /**
-   * Cierra la caja. ADMIN cualquier caja abierta; EMPLEADO solo la que abrió.
+   * Cierra la caja. ADMIN cualquier caja abierta; EMPLEADO solo la que abrió
+   * y solo si tiene acceso a la sucursal de la caja.
    * Sin responsable de apertura acreditado, EMPLEADO no puede cerrar.
    */
   async cerrar(
@@ -112,6 +141,9 @@ export class CajaService implements OnModuleInit {
     actor: RequestUser,
   ): Promise<CierreCajaResponseDto> {
     try {
+      // Acceso a la sucursal de la caja (lectura sin lock; la sucursal de una caja no cambia).
+      await this.getCajaConAcceso(id, actor);
+
       const result = await this.cajaRepository.manager.transaction(
         async (manager) => {
           const caja = await manager
@@ -175,14 +207,18 @@ export class CajaService implements OnModuleInit {
     }
   }
 
+  /** Movimiento manual sobre la caja abierta de la sucursal operativa. */
   async crearMovimientoManual(
     request: CreateMovimientoCajaRequestDto,
     actor: RequestUser,
+    sucursalId: number,
   ): Promise<MovimientoCajaDTO> {
     try {
-      const caja = await this.cajaRepository.findAbierta();
+      const caja = await this.cajaRepository.findAbierta(sucursalId);
       if (!caja) {
-        this.errorHandler.throwBadRequest(ERRORS.CAJA.NO_ABIERTA);
+        this.errorHandler.throwBadRequest(ERRORS.CAJA.NO_ABIERTA, {
+          sucursalId,
+        });
       }
 
       const movimiento = new MovimientoCaja();
@@ -205,29 +241,32 @@ export class CajaService implements OnModuleInit {
     }
   }
 
+  /** Movimientos de cajas de la sucursal operativa (header `x-sucursal-id`). */
   async searchMovimientos(
     request: SearchMovimientoCajaRequestDto,
+    sucursalId: number,
   ): Promise<PageDto<MovimientoCajaDTO>> {
+    const page = await this.movimientoCajaRepository.search(
+      request,
+      sucursalId,
+    );
+    return this.movimientoCajaMapper.page2Dto(request, page);
+  }
+
+  /** Movimientos de una caja concreta (acceso validado contra la sucursal de la caja). */
+  async searchMovimientosByCaja(
+    cajaId: number,
+    request: SearchMovimientoCajaRequestDto,
+    viewer: RequestUser,
+  ): Promise<PageDto<MovimientoCajaDTO>> {
+    await this.getCajaConAcceso(cajaId, viewer);
+    request.cajaId = cajaId;
     const page = await this.movimientoCajaRepository.search(request);
     return this.movimientoCajaMapper.page2Dto(request, page);
   }
 
-  async searchMovimientosByCaja(
-    cajaId: number,
-    request: SearchMovimientoCajaRequestDto,
-  ): Promise<PageDto<MovimientoCajaDTO>> {
-    const caja = await this.cajaRepository.findByIdWithUsuario(cajaId);
-    if (!caja) {
-      this.errorHandler.throwNotFound(ERRORS.DATABASE.RECORD_NOT_FOUND, {
-        id: cajaId,
-      });
-    }
-    request.cajaId = cajaId;
-    return this.searchMovimientos(request);
-  }
-
   /**
-   * Registra un movimiento VENTA en la caja abierta (solo efectivo).
+   * Registra un movimiento VENTA en la caja abierta de la sucursal de la venta (solo efectivo).
    * Debe llamarse dentro de la transacción de alta de venta.
    */
   async registrarVentaEfectivo(
@@ -235,6 +274,7 @@ export class CajaService implements OnModuleInit {
       ventaId: number;
       monto: number;
       usuarioId: number;
+      sucursalId: number;
     },
     manager: EntityManager,
   ): Promise<MovimientoCaja> {
@@ -242,12 +282,17 @@ export class CajaService implements OnModuleInit {
     const movimientoRepo = manager.getRepository(MovimientoCaja);
 
     const caja = await cajaRepo.findOne({
-      where: { estado: EstadoCaja.ABIERTA },
+      where: {
+        estado: EstadoCaja.ABIERTA,
+        sucursal: { id: params.sucursalId },
+      },
     });
 
     if (!caja) {
       this.errorHandler.throwBadRequest(ERRORS.CAJA.NO_ABIERTA, {
-        mensaje: 'Se requiere caja abierta para ventas en efectivo',
+        mensaje:
+          'Se requiere caja abierta en la sucursal para ventas en efectivo',
+        sucursalId: params.sucursalId,
       });
     }
 
@@ -264,9 +309,10 @@ export class CajaService implements OnModuleInit {
   }
 
   /**
-   * Egreso por anulación de una venta en efectivo.
-   * Si la caja que cobró sigue abierta, el egreso va ahí.
-   * Si ya cerró, va a la caja abierta actual y no se modifica el cierre anterior.
+   * Egreso por anulación de una venta en efectivo. Nunca mezcla sucursales:
+   * - Si la caja que cobró sigue abierta, el egreso va ahí.
+   * - Si ya cerró, va a la caja abierta de esa MISMA sucursal (no se modifica el cierre anterior).
+   * - Si no hay caja abierta en esa sucursal, error.
    */
   async registrarAnulacionEfectivo(
     params: {
@@ -274,6 +320,8 @@ export class CajaService implements OnModuleInit {
       numero: number | null;
       monto: number;
       usuarioId: number;
+      /** Sucursal de la venta (NO la del header del actor). */
+      sucursalId: number;
     },
     manager: EntityManager,
   ): Promise<MovimientoCaja> {
@@ -285,7 +333,7 @@ export class CajaService implements OnModuleInit {
         referenciaId: params.ventaId,
         tipo: TipoMovimientoCaja.VENTA,
       },
-      relations: { caja: true },
+      relations: { caja: { sucursal: true } },
     });
 
     if (!movimientoVenta?.caja) {
@@ -294,17 +342,35 @@ export class CajaService implements OnModuleInit {
       });
     }
 
+    const sucursalCajaOriginal = movimientoVenta.caja.sucursal?.id;
+    if (
+      sucursalCajaOriginal !== undefined &&
+      sucursalCajaOriginal !== params.sucursalId
+    ) {
+      // Inconsistencia de datos: la caja que cobró no es de la sucursal de la venta.
+      this.errorHandler.throwBadRequest(ERRORS.CAJA.ESTADO_INVALIDO, {
+        mensaje: 'La caja que cobró la venta pertenece a otra sucursal',
+        ventaId: params.ventaId,
+        sucursalVenta: params.sucursalId,
+        sucursalCaja: sucursalCajaOriginal,
+      });
+    }
+
     let cajaDestino = movimientoVenta.caja;
     const cajaOriginalCerrada = cajaDestino.estado !== EstadoCaja.ABIERTA;
 
     if (cajaOriginalCerrada) {
       const abierta = await cajaRepo.findOne({
-        where: { estado: EstadoCaja.ABIERTA },
+        where: {
+          estado: EstadoCaja.ABIERTA,
+          sucursal: { id: params.sucursalId },
+        },
       });
       if (!abierta) {
         this.errorHandler.throwBadRequest(ERRORS.CAJA.NO_ABIERTA, {
           mensaje:
-            'La caja de la venta está cerrada y no hay otra caja abierta para registrar la anulación',
+            'La caja de la venta está cerrada y no hay otra caja abierta en la misma sucursal para registrar la anulación',
+          sucursalId: params.sucursalId,
         });
       }
       cajaDestino = abierta;
@@ -323,6 +389,49 @@ export class CajaService implements OnModuleInit {
     });
 
     return movimientoRepo.save(movimiento);
+  }
+
+  /**
+   * Carga una caja y valida que el usuario tenga acceso a su sucursal
+   * (ADMIN siempre; EMPLEADO solo sucursales asignadas).
+   */
+  private async getCajaConAcceso(
+    id: number,
+    user: RequestUser,
+  ): Promise<Caja> {
+    const caja = await this.cajaRepository.findByIdWithUsuario(id);
+    if (!caja) {
+      this.errorHandler.throwNotFound(ERRORS.DATABASE.RECORD_NOT_FOUND, { id });
+    }
+    await this.sucursalAccess.assertUsuarioTieneAcceso(user, caja.sucursal.id);
+    return caja;
+  }
+
+  private throwYaAbierta(
+    cajaId: number | undefined,
+    sucursalId: number,
+    sucursalNombre?: string,
+  ): never {
+    this.errorHandler.throwBadRequest(ERRORS.CAJA.YA_ABIERTA, {
+      mensaje: sucursalNombre
+        ? `Ya hay una caja abierta en la sucursal ${sucursalNombre}`
+        : 'Ya hay una caja abierta en la sucursal',
+      cajaId,
+      sucursalId,
+      ...(sucursalNombre ? { sucursal: sucursalNombre } : {}),
+    });
+  }
+
+  private isDuplicateCajaAbierta(error: unknown): boolean {
+    const driver = (
+      error as {
+        driverError?: { code?: string; errno?: number; sqlMessage?: string };
+      }
+    )?.driverError;
+    const esDuplicado = driver?.code === 'ER_DUP_ENTRY' || driver?.errno === 1062;
+    return Boolean(
+      esDuplicado && driver?.sqlMessage?.includes(UQ_CAJA_ABIERTA_POR_SUCURSAL),
+    );
   }
 
   /**

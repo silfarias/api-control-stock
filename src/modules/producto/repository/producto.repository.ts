@@ -14,12 +14,27 @@ export class ProductoRepository extends Repository<Producto> {
     super(Producto, dataSource.createEntityManager());
   }
 
-  async search(request: SearchProductoRequestDto): Promise<PageDto<Producto>> {
+  /**
+   * @param sucursalId Sucursal operativa (opcional). Si viene, se carga el stock de ESA sucursal
+   *   (join con condición => a lo sumo una fila por producto, sin duplicar resultados ni paginación).
+   *   Si no viene, el catálogo se devuelve sin stock (stockCantidad = 0).
+   */
+  async search(
+    request: SearchProductoRequestDto,
+    sucursalId?: number,
+  ): Promise<PageDto<Producto>> {
     const queryBuilder: SelectQueryBuilder<Producto> = this.createQueryBuilder(
       'producto',
-    )
-      .leftJoinAndSelect('producto.categoria', 'categoria')
-      .leftJoinAndSelect('producto.stock', 'stock');
+    ).leftJoinAndSelect('producto.categoria', 'categoria');
+
+    if (sucursalId !== undefined) {
+      queryBuilder.leftJoinAndSelect(
+        'producto.stocks',
+        'stock',
+        'stock.sucursal_id = :stockSucursalId',
+        { stockSucursalId: sucursalId },
+      );
+    }
 
     if (request.id) {
       queryBuilder.andWhere('producto.id = :id', { id: request.id });

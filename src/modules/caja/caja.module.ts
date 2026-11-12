@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { SucursalModule } from '../sucursal/sucursal.module.js';
 import { CajaController } from './caja.controller.js';
 import { CajaService } from './caja.service.js';
 import { CajaNumeracion } from './entities/caja-numeracion.entity.js';
@@ -11,7 +12,10 @@ import { CajaRepository } from './repository/caja.repository.js';
 import { MovimientoCajaRepository } from './repository/movimiento-caja.repository.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Caja, MovimientoCaja, CajaNumeracion])],
+  imports: [
+    TypeOrmModule.forFeature([Caja, MovimientoCaja, CajaNumeracion]),
+    SucursalModule,
+  ],
   controllers: [CajaController],
   providers: [
     CajaService,

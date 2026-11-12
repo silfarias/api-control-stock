@@ -14,14 +14,20 @@ export class MovimientoStockRepository extends Repository<MovimientoStock> {
     super(MovimientoStock, dataSource.createEntityManager());
   }
 
+  /**
+   * Busca movimientos de UNA sucursal (la operativa del request).
+   */
   async search(
     request: SearchMovimientoStockRequestDto,
+    sucursalId: number,
   ): Promise<PageDto<MovimientoStock>> {
     const queryBuilder: SelectQueryBuilder<MovimientoStock> =
       this.createQueryBuilder('movimiento')
         .leftJoinAndSelect('movimiento.producto', 'producto')
         .leftJoinAndSelect('producto.categoria', 'categoria')
-        .leftJoinAndSelect('movimiento.usuario', 'usuario');
+        .leftJoinAndSelect('movimiento.usuario', 'usuario')
+        .leftJoinAndSelect('movimiento.sucursal', 'sucursal')
+        .where('movimiento.sucursal_id = :sucursalId', { sucursalId });
 
     if (request.id) {
       queryBuilder.andWhere('movimiento.id = :id', { id: request.id });

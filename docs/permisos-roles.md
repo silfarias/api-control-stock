@@ -16,8 +16,41 @@ Protección: `JwtAuthGuard` (autenticado) + `AdminGuard` (solo ADMIN). En respue
 | Compras | Gestión completa | Sin acceso (403) |
 | Ventas | Registrar, consultar y cancelar | Registrar y consultar (sin cancelar). Filtro opcional `fecha=YYYY-MM-DD` |
 | Caja | Abrir/cerrar cualquier caja, historial, movimientos manuales | Abrir si no hay abierta; cerrar solo la propia; consultar activa/historial/movimientos (lectura). Sin movimientos manuales |
-| Reportes | Todos | Sin acceso (403) |
+| Reportes | Todos. `x-sucursal-id` opcional: con header = esa sucursal, sin header = consolidado de todas | Sin acceso (403) |
 | Ticket | Consultar y modificar | Solo consultar |
+| Sucursales | CRUD, activar/desactivar, asignar usuarios (`PUT /sucursal/usuario/:usuarioId/asignaciones`) | Solo ver las propias (`GET /sucursal/me`) |
+| Transferencias | Crear, editar borrador, confirmar, cancelar, eliminar borrador y consultar (todas las sucursales) | Sin acceso (403) |
+
+## Sucursales (`x-sucursal-id`)
+
+La mayoría de las operaciones (inventario, ventas, compras, caja, alta de producto) exigen el header `x-sucursal-id`,
+validado por `RequireSucursalGuard` después de `JwtAuthGuard`:
+
+| Rol | Sucursales en las que puede operar |
+|---|---|
+| ADMIN | Cualquier sucursal **activa** (no necesita asignación) |
+| EMPLEADO | Solo las **asignadas** en `usuario_sucursal` y activas; si no, `403` (`SU03`) |
+
+- Header ausente o inválido → `400` (`SU06` / `SU07`); sucursal inexistente → `404` (`SU01`); inactiva → `400` (`SU02`).
+- Header **opcional** (`OptionalSucursalGuard`): productos (`stockCantidad` de esa sucursal; sin header vale 0) y reportes (sin header = consolidado, solo ADMIN).
+- Un registro solo se modifica desde su propia sucursal (`SU08`), p. ej. compras. Cancelar una venta restituye stock y caja en la sucursal **de la venta**.
+- Ver el detalle completo en `multisucursal.md`.
+
+## Transferencias entre sucursales
+
+Todos los endpoints de `/transferencia` usan `JwtAuthGuard` + `AdminGuard` y **no** usan `x-sucursal-id`
+(origen y destino van en el body); un EMPLEADO recibe `403` (`AR02`).
+
+| Endpoint | Acción |
+|---|---|
+| `GET /transferencia/search`, `GET /transferencia/:id` | Consultar (todas las sucursales) |
+| `POST /transferencia` | Crear borrador (origen ≠ destino, ambas activas) |
+| `PATCH /transferencia/:id` | Editar (solo BORRADOR) |
+| `POST /transferencia/:id/confirmar` | Mover stock origen → destino en una transacción |
+| `POST /transferencia/:id/cancelar` | BORRADOR → CANCELADA |
+| `DELETE /transferencia/:id` | Soft-delete (solo BORRADOR) |
+
+Una transferencia CONFIRMADA no se puede editar, cancelar ni eliminar. Si el stock del origen no alcanza, la confirmación falla completa (`IN01`).
 
 ## Caja — responsables
 

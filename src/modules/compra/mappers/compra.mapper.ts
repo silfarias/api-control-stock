@@ -4,6 +4,7 @@ import { PageDto } from '../../../common/dto/page.dto.js';
 import { EstadoCompra } from '../../../common/enums/estado-compra.enum.js';
 import { Producto } from '../../producto/entities/producto.entity.js';
 import { Proveedor } from '../../proveedor/entities/proveedor.entity.js';
+import { Sucursal } from '../../sucursal/entities/sucursal.entity.js';
 import { Usuario } from '../../usuario/entities/usuario.entity.js';
 import { CompraDTO } from '../dto/compra.dto.js';
 import { CreateCompraRequestDto } from '../dto/create-compra-request.dto.js';
@@ -59,11 +60,13 @@ export class CompraMapper {
   createDTO2Entity(
     request: CreateCompraRequestDto,
     usuarioId: number,
+    sucursalId: number,
   ): Compra {
     const { items, total } = this.buildItems(request.items);
     const compra = new Compra();
     compra.proveedor = Proveedor.fromId(request.proveedorId);
     compra.usuario = Usuario.fromId(usuarioId);
+    compra.sucursal = Sucursal.fromId(sucursalId);
     compra.estado = EstadoCompra.BORRADOR;
     compra.total = total;
     compra.items = items;

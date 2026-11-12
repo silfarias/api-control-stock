@@ -3,6 +3,7 @@ import { Expose, Type } from 'class-transformer';
 import { CommonDTO } from '../../../common/dto/common.dto.js';
 import { EstadoCompra } from '../../../common/enums/estado-compra.enum.js';
 import { ProveedorDTO } from '../../proveedor/dto/proveedor.dto.js';
+import { SucursalDTO } from '../../sucursal/dto/sucursal.dto.js';
 import { UsuarioDTO } from '../../usuario/dto/usuario.dto.js';
 import { ItemCompraDTO } from './item-compra.dto.js';
 
@@ -37,6 +38,14 @@ export class CompraDTO extends CommonDTO {
   @Type(() => UsuarioDTO)
   @Expose()
   usuario: UsuarioDTO;
+
+  @ApiProperty({
+    description: 'Sucursal que recibe la mercadería de la compra',
+    type: () => SucursalDTO,
+  })
+  @Type(() => SucursalDTO)
+  @Expose()
+  sucursal: SucursalDTO;
 
   @ApiProperty({ description: 'Ítems de la compra', type: [ItemCompraDTO] })
   @Type(() => ItemCompraDTO)

@@ -18,6 +18,7 @@ export class VentaRepository extends Repository<Venta> {
   private baseQuery(): SelectQueryBuilder<Venta> {
     return this.createQueryBuilder('venta')
       .leftJoinAndSelect('venta.usuario', 'usuario')
+      .leftJoinAndSelect('venta.sucursal', 'sucursal')
       .leftJoinAndSelect('venta.items', 'items')
       .leftJoinAndSelect('items.producto', 'producto')
       .leftJoinAndSelect('producto.categoria', 'categoria');
@@ -30,6 +31,7 @@ export class VentaRepository extends Repository<Venta> {
   /**
    * Alinea comprobantes ya cargados (numero = id) y deja el contador
    * en el máximo existente. Idempotente.
+   * La numeración es GLOBAL (un único contador para todas las sucursales).
    */
   async syncNumeracion(): Promise<void> {
     await this.manager.query(`
@@ -52,6 +54,7 @@ export class VentaRepository extends Repository<Venta> {
   /**
    * Reserva el siguiente comprobante. El FOR UPDATE se sostiene
    * hasta el commit de la transacción que llama.
+   * Numeración GLOBAL: no depende de la sucursal (decisión de diseño multisucursal).
    */
   async allocateNumero(manager: EntityManager): Promise<number> {
     const rows: { ultimo: number | string }[] = await manager.query(
@@ -68,8 +71,16 @@ export class VentaRepository extends Repository<Venta> {
     return numero;
   }
 
-  async search(request: SearchVentaRequestDto): Promise<PageDto<Venta>> {
-    const queryBuilder = this.baseQuery();
+  /**
+   * @param sucursalId Sucursal operativa del request (header x-sucursal-id): solo se listan sus ventas.
+   */
+  async search(
+    request: SearchVentaRequestDto,
+    sucursalId: number,
+  ): Promise<PageDto<Venta>> {
+    const queryBuilder = this.baseQuery().where('venta.sucursal_id = :sucursalId', {
+      sucursalId,
+    });
 
     if (request.id) {
       queryBuilder.andWhere('venta.id = :id', { id: request.id });

@@ -15,12 +15,15 @@ export class CajaRepository extends Repository<Caja> {
   private baseQuery(): SelectQueryBuilder<Caja> {
     return this.createQueryBuilder('caja')
       .leftJoinAndSelect('caja.usuario', 'usuario')
-      .leftJoinAndSelect('caja.usuarioCierre', 'usuarioCierre');
+      .leftJoinAndSelect('caja.usuarioCierre', 'usuarioCierre')
+      .leftJoinAndSelect('caja.sucursal', 'sucursal');
   }
 
-  async findAbierta(): Promise<Caja | null> {
+  /** Caja ABIERTA de una sucursal (a lo sumo una, garantizado por uq_caja_abierta_por_sucursal). */
+  async findAbierta(sucursalId: number): Promise<Caja | null> {
     return this.baseQuery()
       .where('caja.estado = :estado', { estado: EstadoCaja.ABIERTA })
+      .andWhere('caja.sucursal_id = :sucursalId', { sucursalId })
       .getOne();
   }
 
@@ -31,6 +34,7 @@ export class CajaRepository extends Repository<Caja> {
   /**
    * Alinea cajas ya cargadas (numero = id) y deja el contador
    * en el máximo existente. Idempotente.
+   * La numeración es GLOBAL (un único contador para todas las sucursales).
    */
   async syncNumeracion(): Promise<void> {
     await this.manager.query(`
@@ -53,6 +57,7 @@ export class CajaRepository extends Repository<Caja> {
   /**
    * Reserva el siguiente número de caja. El FOR UPDATE se sostiene
    * hasta el commit de la transacción que llama.
+   * Numeración GLOBAL: no depende de la sucursal (decisión de diseño multisucursal).
    */
   async allocateNumero(manager: EntityManager): Promise<number> {
     const rows: { ultimo: number | string }[] = await manager.query(
@@ -69,8 +74,14 @@ export class CajaRepository extends Repository<Caja> {
     return numero;
   }
 
-  async search(request: SearchCajaRequestDto): Promise<PageDto<Caja>> {
-    const queryBuilder = this.baseQuery();
+  /** @param sucursalId Sucursal operativa del request: solo se listan sus cajas. */
+  async search(
+    request: SearchCajaRequestDto,
+    sucursalId: number,
+  ): Promise<PageDto<Caja>> {
+    const queryBuilder = this.baseQuery().where('caja.sucursal_id = :sucursalId', {
+      sucursalId,
+    });
 
     if (request.id) {
       queryBuilder.andWhere('caja.id = :id', { id: request.id });

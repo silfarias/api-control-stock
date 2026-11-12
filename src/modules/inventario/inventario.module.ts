@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { SucursalModule } from '../sucursal/sucursal.module.js';
 import { MovimientoStock } from './entities/movimiento-stock.entity.js';
 import { Stock } from './entities/stock.entity.js';
 import { InventarioController } from './inventario.controller.js';
@@ -10,7 +11,7 @@ import { MovimientoStockRepository } from './repository/movimiento-stock.reposit
 import { StockRepository } from './repository/stock.repository.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Stock, MovimientoStock])],
+  imports: [TypeOrmModule.forFeature([Stock, MovimientoStock]), SucursalModule],
   controllers: [InventarioController],
   providers: [
     InventarioService,

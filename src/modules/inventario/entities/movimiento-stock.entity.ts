@@ -3,6 +3,7 @@ import { TipoMovimientoStock } from '../../../common/enums/tipo-movimiento-stock
 import { TipoReferenciaMovimiento } from '../../../common/enums/tipo-referencia-movimiento.enum.js';
 import { BaseEntity } from '../../../common/models/baseentity.js';
 import { Producto } from '../../producto/entities/producto.entity.js';
+import { Sucursal } from '../../sucursal/entities/sucursal.entity.js';
 import { Usuario } from '../../usuario/entities/usuario.entity.js';
 
 @Entity('movimiento_stock')
@@ -10,6 +11,14 @@ export class MovimientoStock extends BaseEntity {
   @ManyToOne(() => Producto, { nullable: false })
   @JoinColumn({ name: 'producto_id' })
   producto: Producto;
+
+  /** Sucursal en la que se movió el stock. */
+  @ManyToOne(() => Sucursal, { nullable: false })
+  @JoinColumn({
+    name: 'sucursal_id',
+    foreignKeyConstraintName: 'FK_movimiento_stock_sucursal',
+  })
+  sucursal: Sucursal;
 
   @Column({ type: 'enum', enum: TipoMovimientoStock })
   tipo: TipoMovimientoStock;

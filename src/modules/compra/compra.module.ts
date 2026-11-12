@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { InventarioModule } from '../inventario/inventario.module.js';
+import { SucursalModule } from '../sucursal/sucursal.module.js';
 import { CompraController } from './compra.controller.js';
 import { CompraService } from './compra.service.js';
 import { CompraNumeracion } from './entities/compra-numeracion.entity.js';
@@ -13,6 +14,7 @@ import { CompraRepository } from './repository/compra.repository.js';
   imports: [
     TypeOrmModule.forFeature([Compra, ItemCompra, CompraNumeracion]),
     InventarioModule,
+    SucursalModule,
   ],
   controllers: [CompraController],
   providers: [CompraService, CompraMapper, CompraRepository],

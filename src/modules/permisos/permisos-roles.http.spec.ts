@@ -1,4 +1,4 @@
-import { INestApplication } from '@nestjs/common';
+import { BadRequestException, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -6,6 +6,7 @@ import { UsuarioRole } from '../../common/enums/usuario-role.enum.js';
 import { AdminGuard } from '../../common/guards/admin.guard.js';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 import { RequestUser } from '../../common/interfaces/jwt.interface.js';
+import { SucursalAccessService } from '../sucursal/sucursal-access.service.js';
 import { CajaController } from '../caja/caja.controller.js';
 import { CajaService } from '../caja/caja.service.js';
 import { CompraController } from '../compra/compra.controller.js';
@@ -22,6 +23,8 @@ import { VentaController } from '../venta/venta.controller.js';
 import { VentaService } from '../venta/venta.service.js';
 
 type RoleMode = 'empleado' | 'admin' | 'anon';
+
+const SUCURSAL_ID = 1;
 
 describe('Permisos HTTP ADMIN / EMPLEADO', () => {
   let app: INestApplication;
@@ -138,6 +141,29 @@ describe('Permisos HTTP ADMIN / EMPLEADO', () => {
     crearMovimientoManual: vi.fn(),
   };
 
+  /** Cliente HTTP que envía siempre el header x-sucursal-id (salvo que se use raw()). */
+  const raw = () => request(app.getHttpServer());
+  const api = () => {
+    const server = raw();
+    const wrap =
+      (method: 'get' | 'post' | 'patch') =>
+      (url: string) =>
+        server[method](url).set('x-sucursal-id', String(SUCURSAL_ID));
+    return { get: wrap('get'), post: wrap('post'), patch: wrap('patch') };
+  };
+
+  /** Simula la resolución del header (la validación real está en sucursal-access.service.spec). */
+  const sucursalAccess = {
+    resolveOperativeSucursalId: vi.fn(async (_user: unknown, header?: string) => {
+      if (!header) throw new BadRequestException('Falta x-sucursal-id');
+      return Number(header);
+    }),
+    resolveOptionalOperativeSucursalId: vi.fn(
+      async (_user: unknown, header?: string) =>
+        header ? Number(header) : undefined,
+    ),
+  };
+
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [
@@ -157,6 +183,7 @@ describe('Permisos HTTP ADMIN / EMPLEADO', () => {
         { provide: ProductoService, useValue: productoService },
         { provide: InventarioService, useValue: inventarioService },
         { provide: CajaService, useValue: cajaService },
+        { provide: SucursalAccessService, useValue: sucursalAccess },
         AdminGuard,
       ],
     })
@@ -189,7 +216,7 @@ describe('Permisos HTTP ADMIN / EMPLEADO', () => {
     });
 
     it('puede registrar ventas', async () => {
-      await request(app.getHttpServer())
+      await api()
         .post('/venta')
         .send({
           metodoPago: 'EFECTIVO',
@@ -199,23 +226,54 @@ describe('Permisos HTTP ADMIN / EMPLEADO', () => {
       expect(ventaService.create).toHaveBeenCalled();
     });
 
+    it('la venta se registra en la sucursal del header', async () => {
+      ventaService.create.mockClear();
+      await api()
+        .post('/venta')
+        .send({
+          metodoPago: 'EFECTIVO',
+          items: [{ productoId: 1, cantidad: 1 }],
+        })
+        .expect(201);
+      expect((ventaService.create.mock.calls[0] as unknown[])[2]).toBe(
+        SUCURSAL_ID,
+      );
+    });
+
+    it('operaciones por sucursal sin x-sucursal-id responden 400', async () => {
+      await raw()
+        .post('/venta')
+        .send({
+          metodoPago: 'EFECTIVO',
+          items: [{ productoId: 1, cantidad: 1 }],
+        })
+        .expect(400);
+      await raw().get('/inventario/search').expect(400);
+      await raw().get('/caja/activa').expect(400);
+      await raw().post('/caja/abrir').send({ montoApertura: 1 }).expect(400);
+    });
+
+    it('producto/search funciona sin header (stockCantidad queda sin sucursal)', async () => {
+      await raw().get('/producto/search').expect(200);
+    });
+
     it('no puede cancelar ventas (403)', async () => {
-      await request(app.getHttpServer()).post('/venta/10/cancelar').expect(403);
+      await api().post('/venta/10/cancelar').expect(403);
       expect(ventaService.cancelar).not.toHaveBeenCalled();
     });
 
     it('no puede consultar compras (403)', async () => {
-      await request(app.getHttpServer()).get('/compra/search').expect(403);
-      await request(app.getHttpServer()).get('/compra/1').expect(403);
+      await api().get('/compra/search').expect(403);
+      await api().get('/compra/1').expect(403);
     });
 
     it('no puede consultar reportes (403)', async () => {
-      await request(app.getHttpServer()).get('/reporte/ventas').expect(403);
-      await request(app.getHttpServer()).get('/reporte/inventario').expect(403);
+      await api().get('/reporte/ventas').expect(403);
+      await api().get('/reporte/inventario').expect(403);
     });
 
     it('no puede modificar ticket (403)', async () => {
-      await request(app.getHttpServer())
+      await api()
         .patch('/ticket')
         .send({ paperMm: 58 })
         .expect(403);
@@ -223,11 +281,11 @@ describe('Permisos HTTP ADMIN / EMPLEADO', () => {
     });
 
     it('puede consultar ticket', async () => {
-      await request(app.getHttpServer()).get('/ticket').expect(200);
+      await api().get('/ticket').expect(200);
     });
 
     it('consulta productos sin precioCosto', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await api()
         .get('/producto/search')
         .expect(200);
       expect(res.body.data[0].precioVenta).toBe(250);
@@ -235,7 +293,7 @@ describe('Permisos HTTP ADMIN / EMPLEADO', () => {
     });
 
     it('consulta inventario sin precioCosto anidado', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await api()
         .get('/inventario/search')
         .expect(200);
       expect(res.body.data[0].producto.precioCosto).toBeUndefined();
@@ -243,20 +301,20 @@ describe('Permisos HTTP ADMIN / EMPLEADO', () => {
     });
 
     it('puede abrir caja, consultar historial y no registrar movimientos manuales', async () => {
-      await request(app.getHttpServer())
+      await api()
         .post('/caja/abrir')
         .send({ montoApertura: 1000 })
         .expect(201);
       expect(cajaService.abrir).toHaveBeenCalled();
 
-      await request(app.getHttpServer()).get('/caja/activa').expect(200);
-      await request(app.getHttpServer()).get('/caja/search').expect(200);
-      await request(app.getHttpServer()).get('/caja/1').expect(200);
-      await request(app.getHttpServer())
+      await api().get('/caja/activa').expect(200);
+      await api().get('/caja/search').expect(200);
+      await api().get('/caja/1').expect(200);
+      await api()
         .get('/caja/movimientos/search')
         .expect(200);
 
-      await request(app.getHttpServer())
+      await api()
         .post('/caja/movimientos')
         .send({
           tipo: 'INGRESO',
@@ -268,7 +326,7 @@ describe('Permisos HTTP ADMIN / EMPLEADO', () => {
     });
 
     it('puede cerrar caja vía endpoint (reglas de ownership en servicio)', async () => {
-      await request(app.getHttpServer())
+      await api()
         .post('/caja/1/cerrar')
         .send({ montoCierre: 1000 })
         .expect(201);
@@ -283,32 +341,32 @@ describe('Permisos HTTP ADMIN / EMPLEADO', () => {
     });
 
     it('puede cancelar ventas', async () => {
-      await request(app.getHttpServer()).post('/venta/10/cancelar').expect(201);
+      await api().post('/venta/10/cancelar').expect(201);
       expect(ventaService.cancelar).toHaveBeenCalled();
     });
 
     it('puede consultar compras y reportes', async () => {
-      await request(app.getHttpServer()).get('/compra/search').expect(200);
-      await request(app.getHttpServer()).get('/reporte/ventas').expect(200);
+      await api().get('/compra/search').expect(200);
+      await api().get('/reporte/ventas').expect(200);
     });
 
     it('puede modificar ticket', async () => {
-      await request(app.getHttpServer())
+      await api()
         .patch('/ticket')
         .send({ paperMm: 58 })
         .expect(200);
     });
 
     it('recibe precioCosto en productos', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await api()
         .get('/producto/1')
         .expect(200);
       expect(res.body.precioCosto).toBe(150);
     });
 
     it('puede consultar historial de caja', async () => {
-      await request(app.getHttpServer()).get('/caja/search').expect(200);
-      await request(app.getHttpServer()).get('/caja/1').expect(200);
+      await api().get('/caja/search').expect(200);
+      await api().get('/caja/1').expect(200);
     });
   });
 });

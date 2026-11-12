@@ -15,7 +15,9 @@ import { InventarioModule } from './modules/inventario/inventario.module.js';
 import { ProductoModule } from './modules/producto/producto.module.js';
 import { ProveedorModule } from './modules/proveedor/proveedor.module.js';
 import { ReporteModule } from './modules/reporte/reporte.module.js';
+import { SucursalModule } from './modules/sucursal/sucursal.module.js';
 import { TicketModule } from './modules/ticket/ticket.module.js';
+import { TransferenciaModule } from './modules/transferencia/transferencia.module.js';
 import { UsuarioModule } from './modules/usuario/usuario.module.js';
 import { VentaModule } from './modules/venta/venta.module.js';
 
@@ -37,7 +39,9 @@ import { VentaModule } from './modules/venta/venta.module.js';
     InventarioModule,
     ProductoModule,
     ProveedorModule,
+    SucursalModule,
     CompraModule,
+    TransferenciaModule,
     CajaModule,
     VentaModule,
     ReporteModule,

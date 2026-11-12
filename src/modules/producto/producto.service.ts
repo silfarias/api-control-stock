@@ -26,25 +26,45 @@ export class ProductoService {
     private readonly errorHandler: ErrorHandlerService,
   ) {}
 
-  async findOne(id: number, viewer?: RequestUser): Promise<ProductoDTO> {
+  /**
+   * El catálogo es global; stockCantidad refleja la sucursal operativa si se informa
+   * (header x-sucursal-id) y es 0 si no hay sucursal en el request.
+   */
+  async findOne(
+    id: number,
+    viewer?: RequestUser,
+    sucursalId?: number,
+  ): Promise<ProductoDTO> {
     const producto = await this.getEntity.findById(Producto, id, {
       categoria: true,
-      stock: true,
     });
+    if (sucursalId !== undefined) {
+      producto.stocks = await this.inventarioService.findStocksByProductoIds(
+        [id],
+        sucursalId,
+      );
+    }
     return this.productoMapper.entity2DTO(producto, viewer?.role);
   }
 
   async search(
     request: SearchProductoRequestDto,
     viewer?: RequestUser,
+    sucursalId?: number,
   ): Promise<PageDto<ProductoDTO>> {
-    const page = await this.productoRepository.search(request);
+    const page = await this.productoRepository.search(request, sucursalId);
     return this.productoMapper.page2Dto(request, page, viewer?.role);
   }
 
+  /**
+   * Crea el producto (catálogo global) y su stock inicial:
+   * fila en 0 en todas las sucursales activas; si stock.cantidad > 0,
+   * movimiento de entrada SOLO en sucursalId (sucursal operativa del actor).
+   */
   async create(
     request: CreateProductoRequestDto,
     actor: RequestUser,
+    sucursalId: number,
   ): Promise<ProductoDTO> {
     try {
       await this.getEntity.findById(Categoria, request.categoriaId);
@@ -58,6 +78,7 @@ export class ProductoService {
               productoId: saved.id,
               cantidad: request.stock?.cantidad ?? 0,
               usuarioId: actor.id,
+              sucursalId,
             },
             manager,
           );
@@ -65,16 +86,18 @@ export class ProductoService {
         },
       );
 
-      return this.findOne(savedId, actor);
+      return this.findOne(savedId, actor, sucursalId);
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);
     }
   }
 
+  /** Igual que create, para un lote: el stock inicial de cada ítem va a sucursalId. */
   async createBulk(
     request: CreateProductosBulkRequestDto,
     actor: RequestUser,
+    sucursalId: number,
   ): Promise<ProductoDTO[]> {
     try {
       this.validarUniquesEnBatch(request.productos);
@@ -99,6 +122,7 @@ export class ProductoService {
                 productoId: saved.id,
                 cantidad: item.stock?.cantidad ?? 0,
                 usuarioId: actor.id,
+                sucursalId,
               },
               manager,
             );
@@ -109,7 +133,7 @@ export class ProductoService {
         },
       );
 
-      return Promise.all(ids.map((id) => this.findOne(id, actor)));
+      return Promise.all(ids.map((id) => this.findOne(id, actor, sucursalId)));
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);
@@ -120,6 +144,7 @@ export class ProductoService {
     id: number,
     request: UpdateProductoRequestDto,
     viewer?: RequestUser,
+    sucursalId?: number,
   ): Promise<ProductoDTO> {
     try {
       const producto = await this.getEntity.findById(Producto, id, {
@@ -135,7 +160,7 @@ export class ProductoService {
         request,
       );
       await this.productoRepository.save(updated);
-      return this.findOne(id, viewer);
+      return this.findOne(id, viewer, sucursalId);
     } catch (error) {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);

@@ -19,7 +19,12 @@ export class ProductoMapper {
     const dto = plainToInstance(ProductoDTO, producto, {
       excludeExtraneousValues: true,
     });
-    dto.stockCantidad = producto.stock?.cantidad ?? 0;
+    // `stocks` viene filtrado por la sucursal operativa (0 o 1 fila). Sin sucursal => no se carga => 0.
+    // Si alguien carga todas las sucursales, el resultado es el stock consolidado.
+    dto.stockCantidad = (producto.stocks ?? []).reduce(
+      (acc, stock) => acc + Number(stock.cantidad ?? 0),
+      0,
+    );
     return applyProductoEconomicVisibility(dto, viewerRole);
   }
 

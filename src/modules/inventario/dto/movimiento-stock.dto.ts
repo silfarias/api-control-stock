@@ -4,6 +4,7 @@ import { CommonDTO } from '../../../common/dto/common.dto.js';
 import { TipoMovimientoStock } from '../../../common/enums/tipo-movimiento-stock.enum.js';
 import { TipoReferenciaMovimiento } from '../../../common/enums/tipo-referencia-movimiento.enum.js';
 import { ProductoDTO } from '../../producto/dto/producto.dto.js';
+import { SucursalDTO } from '../../sucursal/dto/sucursal.dto.js';
 import { UsuarioDTO } from '../../usuario/dto/usuario.dto.js';
 
 export class MovimientoStockDTO extends CommonDTO {
@@ -59,4 +60,9 @@ export class MovimientoStockDTO extends CommonDTO {
   @Type(() => UsuarioDTO)
   @Expose()
   usuario: UsuarioDTO;
+
+  @ApiProperty({ description: 'Sucursal en la que ocurrió el movimiento', type: () => SucursalDTO })
+  @Type(() => SucursalDTO)
+  @Expose()
+  sucursal: SucursalDTO;
 }

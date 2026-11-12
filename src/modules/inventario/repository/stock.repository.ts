@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
+import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
 import { PageDto } from '../../../common/dto/page.dto.js';
 import {
   applySearchQueryOptions,
@@ -14,12 +14,20 @@ export class StockRepository extends Repository<Stock> {
     super(Stock, dataSource.createEntityManager());
   }
 
-  async search(request: SearchStockRequestDto): Promise<PageDto<Stock>> {
+  /**
+   * Busca stock de UNA sucursal (la operativa del request).
+   */
+  async search(
+    request: SearchStockRequestDto,
+    sucursalId: number,
+  ): Promise<PageDto<Stock>> {
     const queryBuilder: SelectQueryBuilder<Stock> = this.createQueryBuilder(
       'stock',
     )
       .leftJoinAndSelect('stock.producto', 'producto')
-      .leftJoinAndSelect('producto.categoria', 'categoria');
+      .leftJoinAndSelect('producto.categoria', 'categoria')
+      .leftJoinAndSelect('stock.sucursal', 'sucursal')
+      .where('stock.sucursal_id = :sucursalId', { sucursalId });
 
     if (request.id) {
       queryBuilder.andWhere('stock.id = :id', { id: request.id });
@@ -43,10 +51,30 @@ export class StockRepository extends Repository<Stock> {
     return new PageDto<Stock>(list, count);
   }
 
-  async findByProductoId(productoId: number): Promise<Stock | null> {
+  async findByProductoId(
+    productoId: number,
+    sucursalId: number,
+  ): Promise<Stock | null> {
     return this.findOne({
-      where: { producto: { id: productoId } },
-      relations: { producto: { categoria: true } },
+      where: { producto: { id: productoId }, sucursal: { id: sucursalId } },
+      relations: { producto: { categoria: true }, sucursal: true },
+    });
+  }
+
+  /**
+   * Filas de stock de la sucursal para un conjunto de productos (una consulta).
+   */
+  async findByProductoIds(
+    productoIds: number[],
+    sucursalId: number,
+  ): Promise<Stock[]> {
+    if (productoIds.length === 0) return [];
+    return this.find({
+      where: {
+        producto: { id: In(productoIds) },
+        sucursal: { id: sucursalId },
+      },
+      relations: { producto: true },
     });
   }
 }

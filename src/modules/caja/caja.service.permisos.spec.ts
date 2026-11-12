@@ -26,6 +26,10 @@ describe('CajaService.cerrar permisos', () => {
     })),
   };
 
+  const sucursalAccess = {
+    assertUsuarioTieneAcceso: vi.fn(async () => undefined),
+  };
+
   let saveMock: ReturnType<typeof vi.fn>;
   let findByIdWithUsuario: ReturnType<typeof vi.fn>;
   let service: CajaService;
@@ -50,6 +54,7 @@ describe('CajaService.cerrar permisos', () => {
     saveMock = vi.fn(async (c: unknown) => c);
     findByIdWithUsuario = vi.fn(async () => ({
       ...cajaAbierta,
+      sucursal: { id: 1 },
       estado: EstadoCaja.CERRADA,
       usuarioCierre: { id: empleado.id },
     }));
@@ -84,6 +89,7 @@ describe('CajaService.cerrar permisos', () => {
       cajaMapper as any,
       movimientoCajaMapper as any,
       errorHandler,
+      sucursalAccess as any,
     );
   }
 
@@ -139,6 +145,27 @@ describe('CajaService.cerrar permisos', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('EMPLEADO sin acceso a la sucursal de la caja no puede cerrarla (403)', async () => {
+    service = buildService({
+      id: 10,
+      estado: EstadoCaja.ABIERTA,
+      montoApertura: 1000,
+      usuario: { id: 2 },
+    });
+    sucursalAccess.assertUsuarioTieneAcceso.mockRejectedValueOnce(
+      new ForbiddenException('Sin acceso a la sucursal'),
+    );
+
+    await expect(
+      service.cerrar(10, { montoCierre: 1000 } as CerrarCajaRequestDto, empleado),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(sucursalAccess.assertUsuarioTieneAcceso).toHaveBeenCalledWith(
+      empleado,
+      1,
+    );
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
   it('ADMIN puede cerrar cualquier caja', async () => {
     service = buildService({
       id: 10,
@@ -149,6 +176,7 @@ describe('CajaService.cerrar permisos', () => {
 
     findByIdWithUsuario.mockResolvedValue({
       id: 10,
+      sucursal: { id: 1 },
       estado: EstadoCaja.CERRADA,
       usuario: { id: 2 },
       usuarioCierre: { id: 1 },

@@ -6,6 +6,7 @@ import { GetEntityService } from './services/get-entity.service.js';
 
 /**
  * Módulo global: servicios compartidos y guards con DI (DataSource en JwtAuthGuard).
+ * RequireSucursalGuard vive en SucursalModule (depende de SucursalAccessService).
  */
 @Global()
 @Module({

@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose, Type } from 'class-transformer';
 import { CommonDTO } from '../../../common/dto/common.dto.js';
 import { EstadoCaja } from '../../../common/enums/estado-caja.enum.js';
+import { SucursalDTO } from '../../sucursal/dto/sucursal.dto.js';
 import { UsuarioDTO } from '../../usuario/dto/usuario.dto.js';
 
 export class CajaDTO extends CommonDTO {
@@ -44,6 +45,14 @@ export class CajaDTO extends CommonDTO {
   })
   @Expose()
   estado: EstadoCaja;
+
+  @ApiProperty({
+    description: 'Sucursal a la que pertenece la caja',
+    type: () => SucursalDTO,
+  })
+  @Type(() => SucursalDTO)
+  @Expose()
+  sucursal: SucursalDTO;
 
   @ApiProperty({
     description: 'Usuario que abrió la caja (responsable de apertura)',

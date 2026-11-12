@@ -1,4 +1,4 @@
-import { Column, Entity, JoinColumn, ManyToOne, OneToOne } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 import { BaseEntity } from '../../../common/models/baseentity.js';
 import { Categoria } from '../../categoria/entities/categoria.entity.js';
 import type { Stock } from '../../inventario/entities/stock.entity.js';
@@ -21,9 +21,13 @@ export class Producto extends BaseEntity {
   @JoinColumn({ name: 'categoria_id' })
   categoria: Categoria;
 
-  /** Relación inversa; la FK vive en `stock.producto_id`. */
-  @OneToOne('Stock', 'producto')
-  stock?: Stock;
+  /**
+   * Relación inversa; la FK vive en `stock.producto_id`.
+   * Hay una fila por sucursal (único por producto+sucursal). Al cargarla en una consulta
+   * contextual se filtra por la sucursal operativa, por lo que suele traer 0 o 1 fila.
+   */
+  @OneToMany('Stock', 'producto')
+  stocks?: Stock[];
 
   @Column({
     name: 'precio_costo',

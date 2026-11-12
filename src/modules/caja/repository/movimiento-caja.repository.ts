@@ -19,13 +19,23 @@ export class MovimientoCajaRepository extends Repository<MovimientoCaja> {
     super(MovimientoCaja, dataSource.createEntityManager());
   }
 
+  /**
+   * @param sucursalId Si viene, solo movimientos de cajas de esa sucursal
+   *   (endpoints con header obligatorio). Si no, sin filtro de sucursal
+   *   (el llamador ya validó el acceso a una caja concreta).
+   */
   async search(
     request: SearchMovimientoCajaRequestDto,
+    sucursalId?: number,
   ): Promise<PageDto<MovimientoCaja>> {
     const queryBuilder: SelectQueryBuilder<MovimientoCaja> =
       this.createQueryBuilder('movimiento')
         .leftJoinAndSelect('movimiento.caja', 'caja')
         .leftJoinAndSelect('movimiento.usuario', 'usuario');
+
+    if (sucursalId !== undefined) {
+      queryBuilder.andWhere('caja.sucursal_id = :sucursalId', { sucursalId });
+    }
 
     if (request.id) {
       queryBuilder.andWhere('movimiento.id = :id', { id: request.id });

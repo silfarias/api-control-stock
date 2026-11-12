@@ -5,6 +5,7 @@ import { EstadoVenta } from '../../../common/enums/estado-venta.enum.js';
 import { UsuarioRole } from '../../../common/enums/usuario-role.enum.js';
 import { Producto } from '../../producto/entities/producto.entity.js';
 import { applyNestedProductoEconomicVisibility } from '../../producto/utils/producto-economic-visibility.util.js';
+import { Sucursal } from '../../sucursal/entities/sucursal.entity.js';
 import { Usuario } from '../../usuario/entities/usuario.entity.js';
 import { CreateVentaRequestDto } from '../dto/create-venta-request.dto.js';
 import { SearchVentaRequestDto } from '../dto/search-venta-request.dto.js';
@@ -47,10 +48,15 @@ export class VentaMapper {
     return pageDto;
   }
 
+  /**
+   * Arma la venta a persistir. sucursal es la sucursal operativa (entidad completa:
+   * se copian nombre, dirección y teléfono como snapshot inmutable del comprobante).
+   */
   buildFromPrecios(
     request: CreateVentaRequestDto,
     usuarioId: number,
     itemsConPrecio: ItemVentaConPrecio[],
+    sucursal: Sucursal,
   ): Venta {
     let total = 0;
     const items = itemsConPrecio.map((itemDto) => {
@@ -68,6 +74,10 @@ export class VentaMapper {
 
     const venta = new Venta();
     venta.usuario = Usuario.fromId(usuarioId);
+    venta.sucursal = Sucursal.fromId(sucursal.id);
+    venta.sucursalNombre = sucursal.nombre;
+    venta.sucursalDireccion = sucursal.direccion ?? null;
+    venta.sucursalTelefono = sucursal.telefono ?? null;
     venta.metodoPago = request.metodoPago;
     venta.estado = EstadoVenta.CONFIRMADA;
     venta.total = Number(total.toFixed(2));

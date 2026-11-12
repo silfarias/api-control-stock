@@ -3,4 +3,5 @@ export enum TipoReferenciaMovimiento {
   COMPRA = 'COMPRA',
   VENTA = 'VENTA',
   OTRO = 'OTRO',
+  TRANSFERENCIA = 'TRANSFERENCIA',
 }

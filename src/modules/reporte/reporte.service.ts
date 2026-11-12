@@ -16,8 +16,19 @@ import { buildPorMetodoPago } from './utils/build-por-metodo-pago.js';
 export class ReporteService {
   constructor(private readonly dataSource: DataSource) {}
 
-  async ventas(filtro: FiltroReporteDto): Promise<ReporteVentasResponseDto> {
-    const ventasRows = await this.ventasBaseQb(filtro)
+  /**
+   * Alcance de los reportes (`sucursalId` opcional):
+   * - Con `sucursalId` (header x-sucursal-id): se filtra por UNA sucursal
+   *   (ventas por venta.sucursal_id y stock por stock.sucursal_id).
+   * - Sin `sucursalId`: reporte CONSOLIDADO de todas las sucursales. Las ventas se suman sin
+   *   filtro de sucursal y el stock se suma por producto entre todas las sucursales
+   *   (el mínimo de stock es del producto, por lo que stock-bajo compara contra el total).
+   */
+  async ventas(
+    filtro: FiltroReporteDto,
+    sucursalId?: number,
+  ): Promise<ReporteVentasResponseDto> {
+    const ventasRows = await this.ventasBaseQb(filtro, sucursalId)
       .select('venta.id', 'id')
       .addSelect('venta.total', 'total')
       .addSelect('venta.metodo_pago', 'metodoPago')
@@ -26,11 +37,11 @@ export class ReporteService {
       .addGroupBy('venta.metodo_pago')
       .getRawMany<{ id: string; total: string; metodoPago: string }>();
 
-    const unidadesRaw = await this.itemsBaseQb(filtro)
+    const unidadesRaw = await this.itemsBaseQb(filtro, sucursalId)
       .select('COALESCE(SUM(item.cantidad), 0)', 'unidadesVendidas')
       .getRawOne<{ unidadesVendidas: string }>();
 
-    const unidadesPorMetodo = await this.itemsBaseQb(filtro)
+    const unidadesPorMetodo = await this.itemsBaseQb(filtro, sucursalId)
       .select('venta.metodo_pago', 'metodoPago')
       .addSelect('COALESCE(SUM(item.cantidad), 0)', 'unidadesVendidas')
       .groupBy('venta.metodo_pago')
@@ -71,8 +82,9 @@ export class ReporteService {
 
   async ventasDiario(
     filtro: FiltroReporteDto,
+    sucursalId?: number,
   ): Promise<ReporteVentasDiarioItemDto[]> {
-    const rows = await this.ventasBaseQb(filtro)
+    const rows = await this.ventasBaseQb(filtro, sucursalId)
       .select('venta.id', 'id')
       .addSelect('venta.total', 'total')
       .addSelect('DATE(venta.created_date)', 'fecha')
@@ -107,10 +119,11 @@ export class ReporteService {
 
   async productosTop(
     filtro: FiltroReporteDto,
+    sucursalId?: number,
   ): Promise<ReporteProductoTopItemDto[]> {
     const limite = filtro.limite ?? 10;
 
-    const rows = await this.itemsBaseQb(filtro)
+    const rows = await this.itemsBaseQb(filtro, sucursalId)
       .select('producto.id', 'productoId')
       .addSelect('producto.nombre', 'nombre')
       .addSelect('producto.codigo', 'codigo')
@@ -138,13 +151,20 @@ export class ReporteService {
     }));
   }
 
-  async stockBajo(filtro: FiltroReporteDto): Promise<ReporteStockBajoItemDto[]> {
+  async stockBajo(
+    filtro: FiltroReporteDto,
+    sucursalId?: number,
+  ): Promise<ReporteStockBajoItemDto[]> {
     const qb = this.dataSource
       .getRepository(Stock)
       .createQueryBuilder('stock')
       .innerJoin('stock.producto', 'producto')
-      .leftJoin('producto.categoria', 'categoria')
-      .where('stock.cantidad <= producto.minimo_stock');
+      .leftJoin('producto.categoria', 'categoria');
+
+    // Sin sucursal => consolidado: se suma el stock del producto en todas las sucursales.
+    if (sucursalId !== undefined) {
+      qb.where('stock.sucursal_id = :sucursalId', { sucursalId });
+    }
 
     if (filtro.categoriaId) {
       qb.andWhere('categoria.id = :categoriaId', {
@@ -161,11 +181,18 @@ export class ReporteService {
       .select('producto.id', 'productoId')
       .addSelect('producto.nombre', 'nombre')
       .addSelect('producto.codigo', 'codigo')
-      .addSelect('stock.cantidad', 'cantidad')
+      .addSelect('COALESCE(SUM(stock.cantidad), 0)', 'cantidad')
       .addSelect('producto.minimo_stock', 'minimoStock')
       .addSelect('categoria.id', 'categoriaId')
       .addSelect('categoria.nombre', 'categoriaNombre')
-      .orderBy('stock.cantidad', 'ASC')
+      .groupBy('producto.id')
+      .addGroupBy('producto.nombre')
+      .addGroupBy('producto.codigo')
+      .addGroupBy('producto.minimo_stock')
+      .addGroupBy('categoria.id')
+      .addGroupBy('categoria.nombre')
+      .having('COALESCE(SUM(stock.cantidad), 0) <= producto.minimo_stock')
+      .orderBy('cantidad', 'ASC')
       .getRawMany<{
         productoId: string;
         nombre: string;
@@ -189,12 +216,18 @@ export class ReporteService {
 
   async inventario(
     filtro: FiltroReporteDto,
+    sucursalId?: number,
   ): Promise<ReporteInventarioResponseDto> {
     const qb = this.dataSource
       .getRepository(Stock)
       .createQueryBuilder('stock')
       .innerJoin('stock.producto', 'producto')
       .leftJoin('producto.categoria', 'categoria');
+
+    // Sin sucursal => consolidado: se suma el stock del producto en todas las sucursales.
+    if (sucursalId !== undefined) {
+      qb.where('stock.sucursal_id = :sucursalId', { sucursalId });
+    }
 
     if (filtro.categoriaId) {
       qb.andWhere('categoria.id = :categoriaId', {
@@ -211,9 +244,14 @@ export class ReporteService {
       .select('producto.id', 'productoId')
       .addSelect('producto.nombre', 'nombre')
       .addSelect('producto.codigo', 'codigo')
-      .addSelect('stock.cantidad', 'cantidad')
+      .addSelect('COALESCE(SUM(stock.cantidad), 0)', 'cantidad')
       .addSelect('producto.precio_costo', 'precioCosto')
       .addSelect('producto.precio_venta', 'precioVenta')
+      .groupBy('producto.id')
+      .addGroupBy('producto.nombre')
+      .addGroupBy('producto.codigo')
+      .addGroupBy('producto.precio_costo')
+      .addGroupBy('producto.precio_venta')
       .orderBy('producto.nombre', 'ASC')
       .getRawMany<{
         productoId: string;
@@ -255,6 +293,7 @@ export class ReporteService {
 
   private ventasBaseQb(
     filtro: FiltroReporteDto,
+    sucursalId?: number,
   ): SelectQueryBuilder<Venta> {
     const qb = this.dataSource
       .getRepository(Venta)
@@ -264,12 +303,18 @@ export class ReporteService {
       .leftJoin('producto.categoria', 'categoria')
       .where('venta.estado = :estado', { estado: EstadoVenta.CONFIRMADA });
 
+    // Sin sucursal => consolidado de TODAS las sucursales.
+    if (sucursalId !== undefined) {
+      qb.andWhere('venta.sucursal_id = :sucursalId', { sucursalId });
+    }
+
     this.aplicarFiltrosVenta(qb, filtro);
     return qb;
   }
 
   private itemsBaseQb(
     filtro: FiltroReporteDto,
+    sucursalId?: number,
   ): SelectQueryBuilder<ItemVenta> {
     const qb = this.dataSource
       .getRepository(ItemVenta)
@@ -278,6 +323,11 @@ export class ReporteService {
       .innerJoin('item.producto', 'producto')
       .leftJoin('producto.categoria', 'categoria')
       .where('venta.estado = :estado', { estado: EstadoVenta.CONFIRMADA });
+
+    // Sin sucursal => consolidado de TODAS las sucursales.
+    if (sucursalId !== undefined) {
+      qb.andWhere('venta.sucursal_id = :sucursalId', { sucursalId });
+    }
 
     this.aplicarFiltrosVenta(qb, filtro);
     return qb;

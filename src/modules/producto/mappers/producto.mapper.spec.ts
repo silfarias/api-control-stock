@@ -15,7 +15,7 @@ describe('ProductoMapper.entity2DTO', () => {
     producto.precioCosto = 150.5;
     producto.precioVenta = 250;
     producto.minimoStock = 10;
-    producto.stock = { cantidad: 8 } as any;
+    producto.stocks = [{ cantidad: 5 }, { cantidad: 3 }] as any;
     producto.categoria = { id: 3, nombre: 'Bebidas' } as any;
     return producto;
   }

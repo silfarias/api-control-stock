@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
+import { EntityManager } from 'typeorm';
 import { PageDto } from '../../common/dto/page.dto.js';
 import { EstadoCompra } from '../../common/enums/estado-compra.enum.js';
 import { ERRORS } from '../../common/errors/errors-codes.js';
@@ -8,6 +9,7 @@ import { GetEntityService } from '../../common/services/get-entity.service.js';
 import { InventarioService } from '../inventario/inventario.service.js';
 import { Producto } from '../producto/entities/producto.entity.js';
 import { Proveedor } from '../proveedor/entities/proveedor.entity.js';
+import { SucursalAccessService } from '../sucursal/sucursal-access.service.js';
 import { CompraDTO } from './dto/compra.dto.js';
 import { CreateCompraRequestDto } from './dto/create-compra-request.dto.js';
 import { CreateItemCompraRequestDto } from './dto/create-item-compra-request.dto.js';
@@ -18,12 +20,24 @@ import { ItemCompra } from './entities/item-compra.entity.js';
 import { CompraMapper } from './mappers/compra.mapper.js';
 import { CompraRepository } from './repository/compra.repository.js';
 
+/**
+ * Compras multisucursal.
+ *
+ * - La compra pertenece a la sucursal operativa con la que se crea y NO cambia de sucursal
+ *   (el DTO de actualización no expone sucursal). Create/update/confirmar/cancelar/remove
+ *   exigen que la sucursal del header coincida con la de la compra.
+ * - La confirmación genera la entrada de stock en la sucursal de la compra.
+ * - Numeración: el 
+umero de compra es GLOBAL (un único contador compra_numeracion
+ *   compartido por todas las sucursales); no se reinicia por sucursal.
+ */
 @Injectable()
 export class CompraService implements OnModuleInit {
   constructor(
     private readonly compraRepository: CompraRepository,
     private readonly compraMapper: CompraMapper,
     private readonly inventarioService: InventarioService,
+    private readonly sucursalAccess: SucursalAccessService,
     private readonly getEntity: GetEntityService,
     private readonly errorHandler: ErrorHandlerService,
   ) {}
@@ -40,14 +54,19 @@ export class CompraService implements OnModuleInit {
     return this.compraMapper.entity2DTO(compra);
   }
 
-  async search(request: SearchCompraRequestDto): Promise<PageDto<CompraDTO>> {
-    const page = await this.compraRepository.search(request);
+  /** Compras de la sucursal operativa (header x-sucursal-id). */
+  async search(
+    request: SearchCompraRequestDto,
+    sucursalId: number,
+  ): Promise<PageDto<CompraDTO>> {
+    const page = await this.compraRepository.search(request, sucursalId);
     return this.compraMapper.page2Dto(request, page);
   }
 
   async create(
     request: CreateCompraRequestDto,
     actor: RequestUser,
+    sucursalId: number,
   ): Promise<CompraDTO> {
     try {
       await this.validarProveedorActivo(request.proveedorId);
@@ -55,7 +74,11 @@ export class CompraService implements OnModuleInit {
 
       const savedId = await this.compraRepository.manager.transaction(
         async (manager) => {
-          const compra = this.compraMapper.createDTO2Entity(request, actor.id);
+          const compra = this.compraMapper.createDTO2Entity(
+            request,
+            actor.id,
+            sucursalId,
+          );
           compra.numero = await this.compraRepository.allocateNumero(manager);
           const saved = await manager.getRepository(Compra).save(compra);
           return saved.id;
@@ -71,6 +94,7 @@ export class CompraService implements OnModuleInit {
   async update(
     id: number,
     request: UpdateCompraRequestDto,
+    sucursalId: number,
   ): Promise<CompraDTO> {
     try {
       const compra = await this.compraRepository.findByIdWithRelations(id);
@@ -79,6 +103,8 @@ export class CompraService implements OnModuleInit {
           id,
         });
       }
+      this.sucursalAccess.assertMismaSucursal(compra.sucursal?.id, sucursalId);
+      // Solo BORRADOR es editable: una compra confirmada nunca cambia de sucursal.
       this.assertBorrador(compra);
 
       if (request.proveedorId !== undefined) {
@@ -117,7 +143,12 @@ export class CompraService implements OnModuleInit {
     }
   }
 
-  async confirmar(id: number, actor: RequestUser): Promise<CompraDTO> {
+  /** Confirma la compra y da entrada al stock de la sucursal de la compra (= la del header). */
+  async confirmar(
+    id: number,
+    actor: RequestUser,
+    sucursalId: number,
+  ): Promise<CompraDTO> {
     try {
       await this.compraRepository.manager.transaction(async (manager) => {
         const compraRepo = manager.getRepository(Compra);
@@ -135,6 +166,10 @@ export class CompraService implements OnModuleInit {
             id,
           });
         }
+
+        // Lectura sin lock (la compra ya está bloqueada): evita bloquear la fila de sucursal.
+        const sucursalCompraId = await this.getSucursalIdDeCompra(manager, id);
+        this.sucursalAccess.assertMismaSucursal(sucursalCompraId, sucursalId);
 
         if (compra.estado === EstadoCompra.CONFIRMADA) {
           this.errorHandler.throwBadRequest(ERRORS.COMPRA.YA_CONFIRMADA, {
@@ -162,6 +197,7 @@ export class CompraService implements OnModuleInit {
           await this.inventarioService.registrarEntradaPorCompra(
             {
               productoId: item.producto.id,
+              sucursalId: sucursalCompraId,
               cantidad: item.cantidad,
               compraId: compra.id,
               usuarioId: actor.id,
@@ -182,7 +218,7 @@ export class CompraService implements OnModuleInit {
     }
   }
 
-  async cancelar(id: number): Promise<CompraDTO> {
+  async cancelar(id: number, sucursalId: number): Promise<CompraDTO> {
     try {
       const compra = await this.compraRepository.findByIdWithRelations(id);
       if (!compra) {
@@ -190,6 +226,7 @@ export class CompraService implements OnModuleInit {
           id,
         });
       }
+      this.sucursalAccess.assertMismaSucursal(compra.sucursal?.id, sucursalId);
       this.assertBorrador(compra);
       compra.estado = EstadoCompra.CANCELADA;
       await this.compraRepository.save(compra);
@@ -200,7 +237,7 @@ export class CompraService implements OnModuleInit {
     }
   }
 
-  async remove(id: number): Promise<string> {
+  async remove(id: number, sucursalId: number): Promise<string> {
     try {
       const compra = await this.compraRepository.findByIdWithRelations(id);
       if (!compra) {
@@ -208,6 +245,7 @@ export class CompraService implements OnModuleInit {
           id,
         });
       }
+      this.sucursalAccess.assertMismaSucursal(compra.sucursal?.id, sucursalId);
       this.assertBorrador(compra);
       await this.compraRepository.softRemove(compra);
       return 'Registro eliminado correctamente';
@@ -215,6 +253,21 @@ export class CompraService implements OnModuleInit {
       if (this.errorHandler.isHttpException(error)) throw error;
       this.errorHandler.handleError(error);
     }
+  }
+
+  private async getSucursalIdDeCompra(
+    manager: EntityManager,
+    compraId: number,
+  ): Promise<number> {
+    const conSucursal = await manager.getRepository(Compra).findOne({
+      where: { id: compraId },
+      relations: { sucursal: true },
+      select: { id: true, sucursal: { id: true } },
+    });
+    if (!conSucursal?.sucursal) {
+      this.errorHandler.throwNotFound(ERRORS.SUCURSAL.NOT_FOUND, { compraId });
+    }
+    return conSucursal.sucursal.id;
   }
 
   private assertBorrador(compra: Compra): void {
